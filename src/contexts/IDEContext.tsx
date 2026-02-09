@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { IDEFile, OpenTab, ChatMessage, RunResult, Project } from '@/types/ide';
+import { ToolCall, ToolName, PatchPreview, PermissionPolicy, DEFAULT_PERMISSION_POLICY } from '@/types/tools';
 import { CLAUDE_SYSTEM_PROMPT } from '@/lib/claude-prompt';
+import { evaluatePermission, executeToolLocally } from '@/lib/tool-executor';
+import { parseUnifiedDiff, applyPatchToContent, extractDiffFromMessage, extractCommandsFromMessage } from '@/lib/patch-utils';
 
 const DEMO_FILES: IDEFile[] = [
   {
@@ -57,6 +60,17 @@ interface IDEContextType {
   toggleOutput: () => void;
   toggleChat: () => void;
   getFileById: (id: string) => IDEFile | undefined;
+  // Tool system
+  toolCalls: ToolCall[];
+  pendingPatches: PatchPreview[];
+  permissionPolicy: PermissionPolicy;
+  approveToolCall: (id: string) => void;
+  denyToolCall: (id: string) => void;
+  alwaysAllowTool: (toolName: ToolName) => void;
+  alwaysAllowCommand: (command: string) => void;
+  applyPatch: (patchId: string) => void;
+  applyPatchAndRun: (patchId: string, command: string) => void;
+  cancelPatch: (patchId: string) => void;
 }
 
 const IDEContext = createContext<IDEContextType | null>(null);
@@ -86,6 +100,9 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   const [showOutput, setShowOutput] = useState(false);
   const [showChat, setShowChat] = useState(true);
   const [selectedText, setSelectedText] = useState('');
+  const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
+  const [pendingPatches, setPendingPatches] = useState<PatchPreview[]>([]);
+  const [permissionPolicy, setPermissionPolicy] = useState<PermissionPolicy>(DEFAULT_PERMISSION_POLICY);
 
   const getFileById = useCallback((id: string) => files.find(f => f.id === id), [files]);
 
@@ -154,6 +171,165 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  // ─── Tool Execution ───
+
+  const executeAndUpdateTool = useCallback((call: ToolCall) => {
+    setToolCalls(prev => prev.map(tc => tc.id === call.id ? { ...tc, status: 'running' as const } : tc));
+
+    // Use setTimeout to simulate async execution
+    setTimeout(() => {
+      const result = executeToolLocally(call, files);
+      setToolCalls(prev => prev.map(tc =>
+        tc.id === call.id
+          ? { ...tc, status: result.ok ? 'completed' as const : 'failed' as const, result }
+          : tc
+      ));
+    }, 300);
+  }, [files]);
+
+  const approveToolCall = useCallback((id: string) => {
+    const call = toolCalls.find(tc => tc.id === id);
+    if (!call) return;
+    setToolCalls(prev => prev.map(tc => tc.id === id ? { ...tc, status: 'approved' as const } : tc));
+    executeAndUpdateTool(call);
+  }, [toolCalls, executeAndUpdateTool]);
+
+  const denyToolCall = useCallback((id: string) => {
+    setToolCalls(prev => prev.map(tc =>
+      tc.id === id ? { ...tc, status: 'denied' as const, result: { ok: false, error: 'Permission denied by user' } } : tc
+    ));
+  }, []);
+
+  const alwaysAllowTool = useCallback((toolName: ToolName) => {
+    setPermissionPolicy(prev => ({
+      ...prev,
+      allowedTools: [...prev.allowedTools.filter(t => t !== toolName), toolName],
+    }));
+  }, []);
+
+  const alwaysAllowCommand = useCallback((command: string) => {
+    const prefix = command.split(' ').slice(0, 2).join(' ');
+    setPermissionPolicy(prev => ({
+      ...prev,
+      allowedCommands: [...prev.allowedCommands.filter(c => c !== prefix), prefix],
+    }));
+  }, []);
+
+  // ─── Patch System ───
+
+  const applyPatchToFiles = useCallback((patchId: string) => {
+    const patchPreview = pendingPatches.find(p => p.id === patchId);
+    if (!patchPreview) return false;
+
+    try {
+      let allApplied = true;
+      for (const patch of patchPreview.patches) {
+        const isNewFile = patch.oldFile === '/dev/null';
+
+        if (isNewFile) {
+          // Create new file from patch
+          const newContent = patch.hunks
+            .flatMap(h => h.lines.filter(l => l.type === 'add').map(l => l.content))
+            .join('\n');
+
+          const name = patch.newFile.split('/').pop() || patch.newFile;
+          const path = patch.newFile.startsWith('/') ? patch.newFile : `/${patch.newFile}`;
+          const ext = name.split('.').pop() || '';
+          const langMap: Record<string, string> = {
+            ts: 'typescript', tsx: 'typescriptreact', js: 'javascript',
+            jsx: 'javascriptreact', json: 'json', md: 'markdown',
+            py: 'python', css: 'css', html: 'html',
+          };
+
+          // Determine parent folder
+          const parentPath = path.split('/').slice(0, -1).join('/') || '/';
+          const parent = files.find(f => f.path === parentPath && f.isFolder);
+
+          const newFile: IDEFile = {
+            id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name, path, content: newContent,
+            language: langMap[ext] || 'plaintext',
+            parentId: parent?.id || null,
+            isFolder: false,
+          };
+          setFiles(prev => [...prev, newFile]);
+          // Open the new file
+          setOpenTabs(prev => [...prev, { fileId: newFile.id, name: newFile.name, path: newFile.path, isModified: false }]);
+          setActiveTabId(newFile.id);
+        } else {
+          // Apply to existing file
+          const targetPath = patch.newFile.startsWith('/') ? patch.newFile : `/${patch.newFile}`;
+          const file = files.find(f => f.path === targetPath);
+          if (!file) {
+            allApplied = false;
+            continue;
+          }
+          const newContent = applyPatchToContent(file.content, patch);
+          if (newContent === null) {
+            allApplied = false;
+            continue;
+          }
+          setFiles(prev => prev.map(f => f.path === targetPath ? { ...f, content: newContent } : f));
+        }
+      }
+
+      setPendingPatches(prev => prev.map(p =>
+        p.id === patchId
+          ? { ...p, status: allApplied ? 'applied' : 'failed', error: allApplied ? undefined : 'Some hunks could not be applied' }
+          : p
+      ));
+      return allApplied;
+    } catch (err) {
+      setPendingPatches(prev => prev.map(p =>
+        p.id === patchId
+          ? { ...p, status: 'failed' as const, error: err instanceof Error ? err.message : 'Unknown error' }
+          : p
+      ));
+      return false;
+    }
+  }, [pendingPatches, files]);
+
+  const applyPatch = useCallback((patchId: string) => {
+    applyPatchToFiles(patchId);
+  }, [applyPatchToFiles]);
+
+  const applyPatchAndRun = useCallback((patchId: string, command: string) => {
+    const success = applyPatchToFiles(patchId);
+    if (success) {
+      // Run the command after applying
+      setShowOutput(true);
+      const run: RunResult = {
+        id: `run-${Date.now()}`,
+        command,
+        status: 'running',
+        logs: `$ ${command}\n`,
+        timestamp: new Date(),
+      };
+      setRuns(prev => [...prev, run]);
+
+      setTimeout(() => {
+        setRuns(prev => prev.map(r =>
+          r.id === run.id
+            ? {
+                ...r,
+                status: 'success' as const,
+                logs: r.logs + `\n> Running after patch applied...\n\n✓ Process exited with code 0\n`,
+                exitCode: 0,
+              }
+            : r
+        ));
+      }, 1500);
+    }
+  }, [applyPatchToFiles]);
+
+  const cancelPatch = useCallback((patchId: string) => {
+    setPendingPatches(prev => prev.map(p =>
+      p.id === patchId ? { ...p, status: 'cancelled' as const } : p
+    ));
+  }, []);
+
+  // ─── Messaging ───
+
   const sendMessage = useCallback((content: string, chips?: ChatMessage['contextChips']) => {
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -164,43 +340,63 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
     };
     setChatMessages(prev => [...prev, userMsg]);
 
-    // Build context block from chips
     const contextParts: string[] = [];
     if (chips) {
       for (const chip of chips) {
-        if (chip.type === 'selection') {
-          contextParts.push(`[Selected code]\n${chip.content}`);
-        } else if (chip.type === 'file') {
-          contextParts.push(`[File: ${chip.label}]\n${chip.content}`);
-        } else if (chip.type === 'errors') {
-          contextParts.push(`[Last run errors]\n${chip.content}`);
-        }
+        if (chip.type === 'selection') contextParts.push(`[Selected code]\n${chip.content}`);
+        else if (chip.type === 'file') contextParts.push(`[File: ${chip.label}]\n${chip.content}`);
+        else if (chip.type === 'errors') contextParts.push(`[Last run errors]\n${chip.content}`);
       }
     }
-
-    const contextBlock = contextParts.length > 0
-      ? `\n\nContext provided:\n${contextParts.join('\n\n')}`
-      : '';
+    const contextBlock = contextParts.length > 0 ? `\n\nContext provided:\n${contextParts.join('\n\n')}` : '';
 
     // TODO: Replace with real API call to POST /api/claude
-    // The request body should be:
-    // {
-    //   project_id: project.id,
-    //   chat_id: 'default',
-    //   user_message: content + contextBlock,
-    //   context: { chips, files: files.map(f => ({ path: f.path, content: f.content })) },
-    //   system_prompt: CLAUDE_SYSTEM_PROMPT
-    // }
     setTimeout(() => {
+      const response = generateMockResponse(content, contextBlock);
+
       const assistantMsg: ChatMessage = {
         id: `msg-${Date.now() + 1}`,
         role: 'assistant',
-        content: generateMockResponse(content, contextBlock),
+        content: response,
         timestamp: new Date(),
       };
       setChatMessages(prev => [...prev, assistantMsg]);
+
+      // Extract and process tool calls from mock response
+      const mockToolCalls = generateMockToolCalls(content);
+      if (mockToolCalls.length > 0) {
+        setToolCalls(prev => [...prev, ...mockToolCalls]);
+        // Auto-execute allowed tools
+        for (const tc of mockToolCalls) {
+          const decision = evaluatePermission(tc, permissionPolicy);
+          if (decision === 'allow') {
+            setTimeout(() => executeAndUpdateTool(tc), 100);
+          } else if (decision === 'deny') {
+            setToolCalls(prev => prev.map(t =>
+              t.id === tc.id ? { ...t, status: 'denied' as const, result: { ok: false, error: 'Blocked by permission policy' } } : t
+            ));
+          }
+          // 'ask' tools remain pending for user approval
+        }
+      }
+
+      // Extract diff patches from response
+      const diffRaw = extractDiffFromMessage(response);
+      if (diffRaw) {
+        const parsed = parseUnifiedDiff(diffRaw);
+        if (parsed.length > 0) {
+          const commands = extractCommandsFromMessage(response);
+          const patchPreview: PatchPreview = {
+            id: `patch-${Date.now()}`,
+            patches: parsed,
+            raw: diffRaw,
+            status: 'preview',
+          };
+          setPendingPatches(prev => [...prev, patchPreview]);
+        }
+      }
     }, 800);
-  }, [files, project.id]);
+  }, [files, project.id, permissionPolicy, executeAndUpdateTool]);
 
   const runCommand = useCallback((command: string) => {
     setShowOutput(true);
@@ -213,7 +409,6 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
     };
     setRuns(prev => [...prev, run]);
 
-    // Mock run execution
     setTimeout(() => {
       setRuns(prev => prev.map(r =>
         r.id === run.id
@@ -238,6 +433,9 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
       toggleOutput: () => setShowOutput(p => !p),
       toggleChat: () => setShowChat(p => !p),
       getFileById,
+      toolCalls, pendingPatches, permissionPolicy,
+      approveToolCall, denyToolCall, alwaysAllowTool, alwaysAllowCommand,
+      applyPatch, applyPatchAndRun, cancelPatch,
     }}>
       {children}
     </IDEContext.Provider>
@@ -249,6 +447,53 @@ export const useIDE = () => {
   if (!ctx) throw new Error('useIDE must be used within IDEProvider');
   return ctx;
 };
+
+// ─── Mock Generators ───
+
+function generateMockToolCalls(userMessage: string): ToolCall[] {
+  const lc = userMessage.toLowerCase();
+  const calls: ToolCall[] = [];
+
+  // Simulate Claude reading files before making suggestions
+  if (lc.includes('refactor') || lc.includes('improve') || lc.includes('fix')) {
+    calls.push({
+      id: `tc-${Date.now()}-read`,
+      tool: 'read_file',
+      input: { path: '/src/utils.ts' },
+      status: 'pending',
+      timestamp: new Date(),
+    });
+  }
+
+  if (lc.includes('test')) {
+    calls.push({
+      id: `tc-${Date.now()}-grep`,
+      tool: 'grep',
+      input: { pattern: 'export function', paths_glob: 'src/**/*.ts' },
+      status: 'pending',
+      timestamp: new Date(),
+    });
+    calls.push({
+      id: `tc-${Date.now()}-run`,
+      tool: 'run_command',
+      input: { command: 'npm test', cwd: '.', timeout_s: 60 },
+      status: 'pending',
+      timestamp: new Date(),
+    });
+  }
+
+  if (lc.includes('search') || lc.includes('find')) {
+    calls.push({
+      id: `tc-${Date.now()}-list`,
+      tool: 'list_files',
+      input: { glob: 'src/**/*' },
+      status: 'pending',
+      timestamp: new Date(),
+    });
+  }
+
+  return calls;
+}
 
 function generateMockResponse(userMessage: string, context: string): string {
   const lc = userMessage.toLowerCase();
