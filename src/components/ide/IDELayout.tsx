@@ -1,30 +1,38 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { Play, MessageSquare, Terminal, Command, Sparkles, Sun, Moon, BookOpen } from 'lucide-react';
+import { Play, MessageSquare, Terminal, Command, Sparkles, Sun, Moon, BookOpen, Brain, Plug, Anchor } from 'lucide-react';
 import { FileTree } from './FileTree';
 import { EditorPane } from './EditorPane';
 import { ChatPanel } from './ChatPanel';
 import { OutputPanel } from './OutputPanel';
 import { CommandPalette } from './CommandPalette';
+import { AgentTimeline } from './AgentTimeline';
+import { MCPConfig } from './MCPConfig';
+import { HooksConfig } from './HooksConfig';
 import { useIDE } from '@/contexts/IDEContext';
 
 export function IDELayout() {
-  const { showChat, toggleChat, toggleOutput, showOutput, project, runCommand, openFile, files, theme, toggleTheme, sendMessage, selectedText } = useIDE();
+  const {
+    showChat, toggleChat, toggleOutput, showOutput, project, runCommand,
+    openFile, files, theme, toggleTheme, sendMessage, selectedText,
+    agentRun, stopAgent, pauseAgent,
+    activeRightPanel, setActiveRightPanel,
+    mcpServers, toggleMCPServer,
+    hooks, toggleHook, addHook, removeHook,
+  } = useIDE();
+
+  const [showMCP, setShowMCP] = useState(false);
+  const [showHooks, setShowHooks] = useState(false);
 
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
-
-      // Cmd+P — quick file open (handled by CommandPalette with file mode)
       if (mod && e.key === 'p') {
         e.preventDefault();
-        // Dispatch Cmd+K to open palette (file search mode)
         const evt = new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true });
         window.dispatchEvent(evt);
       }
-
-      // Cmd/Ctrl+Enter — send selection to Claude
       if (mod && e.key === 'Enter') {
         e.preventDefault();
         if (selectedText) {
@@ -35,28 +43,19 @@ export function IDELayout() {
           runCommand('npm test');
         }
       }
-
-      // Cmd+B — toggle chat
-      if (mod && e.key === 'b') {
-        e.preventDefault();
-        toggleChat();
-      }
-
-      // Cmd+J — toggle output
-      if (mod && e.key === 'j') {
-        e.preventDefault();
-        toggleOutput();
-      }
+      if (mod && e.key === 'b') { e.preventDefault(); toggleChat(); }
+      if (mod && e.key === 'j') { e.preventDefault(); toggleOutput(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggleChat, toggleOutput, runCommand, sendMessage, selectedText]);
 
-  // Open CLAUDE.md
   const openProjectBrief = () => {
     const claudeFile = files.find(f => f.path === '/CLAUDE.md');
     if (claudeFile) openFile(claudeFile.id);
   };
+
+  const isAgentActive = agentRun?.status === 'running' || agentRun?.status === 'queued';
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
@@ -69,6 +68,11 @@ export function IDELayout() {
           </div>
           <span className="text-xs text-muted-foreground">—</span>
           <span className="text-xs text-muted-foreground font-mono">{project.name}</span>
+          {isAgentActive && (
+            <span className="text-[10px] px-1.5 py-0.5 bg-ide-warning/15 text-ide-warning rounded-sm animate-pulse">
+              Agent running
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-1">
@@ -80,6 +84,23 @@ export function IDELayout() {
             <BookOpen className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Brief</span>
           </button>
+          <button
+            onClick={() => setShowHooks(true)}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
+            title="Configure Hooks"
+          >
+            <Anchor className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Hooks</span>
+          </button>
+          <button
+            onClick={() => setShowMCP(true)}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
+            title="MCP Servers"
+          >
+            <Plug className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">MCP</span>
+          </button>
+          <div className="w-px h-4 bg-border mx-1" />
           <button
             onClick={() => runCommand('npm start')}
             className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-ide-success/10 text-ide-success rounded-sm hover:bg-ide-success/20 transition-colors"
@@ -101,13 +122,31 @@ export function IDELayout() {
           >
             <Terminal className="h-3.5 w-3.5" />
           </button>
-          <button
-            onClick={toggleChat}
-            className={`p-1.5 rounded-sm transition-colors ${showChat ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}
-            title="Toggle Chat (⌘B)"
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-          </button>
+          {/* Chat / Agent tab switcher */}
+          <div className="flex items-center border border-border rounded-sm overflow-hidden ml-1">
+            <button
+              onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('chat'); }}
+              className={`p-1.5 transition-colors ${
+                showChat && activeRightPanel === 'chat'
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-accent/50'
+              }`}
+              title="Chat (⌘B)"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('agent'); }}
+              className={`p-1.5 transition-colors ${
+                showChat && activeRightPanel === 'agent'
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-accent/50'
+              }`}
+              title="Agent Timeline"
+            >
+              <Brain className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <button
             onClick={() => {
               const e = new KeyboardEvent('keydown', { key: 'k', metaKey: true });
@@ -124,13 +163,11 @@ export function IDELayout() {
       {/* Main content */}
       <div className="flex-1 min-h-0 flex flex-col">
         <PanelGroup direction="horizontal" className="flex-1">
-          {/* File tree */}
           <Panel defaultSize={15} minSize={10} maxSize={30}>
             <FileTree />
           </Panel>
           <PanelResizeHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
 
-          {/* Editor + Output */}
           <Panel defaultSize={showChat ? 55 : 85} minSize={30}>
             <div className="h-full flex flex-col">
               <div className="flex-1 min-h-0">
@@ -140,12 +177,19 @@ export function IDELayout() {
             </div>
           </Panel>
 
-          {/* Chat panel */}
           {showChat && (
             <>
               <PanelResizeHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
               <Panel defaultSize={30} minSize={20} maxSize={45}>
-                <ChatPanel />
+                {activeRightPanel === 'chat' ? (
+                  <ChatPanel />
+                ) : (
+                  <AgentTimeline
+                    agentRun={agentRun}
+                    onStop={stopAgent}
+                    onPause={pauseAgent}
+                  />
+                )}
               </Panel>
             </>
           )}
@@ -158,6 +202,12 @@ export function IDELayout() {
           <span>TypeScript</span>
           <span>UTF-8</span>
           <span>Spaces: 2</span>
+          {mcpServers.filter(s => s.enabled).length > 0 && (
+            <span className="flex items-center gap-1 text-primary">
+              <Plug className="h-2.5 w-2.5" />
+              {mcpServers.filter(s => s.enabled).length} MCP
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1">
@@ -169,6 +219,8 @@ export function IDELayout() {
       </div>
 
       <CommandPalette />
+      {showMCP && <MCPConfig servers={mcpServers} onToggleServer={toggleMCPServer} onClose={() => setShowMCP(false)} />}
+      {showHooks && <HooksConfig hooks={hooks} onToggleHook={toggleHook} onAddHook={addHook} onRemoveHook={removeHook} onClose={() => setShowHooks(false)} />}
     </div>
   );
 }
