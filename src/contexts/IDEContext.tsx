@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { IDEFile, OpenTab, ChatMessage, RunResult, Project, ContextChip } from '@/types/ide';
 import { ToolCall, ToolName, PatchPreview, PermissionPolicy, DEFAULT_PERMISSION_POLICY } from '@/types/tools';
 import { RunnerSession } from '@/types/runner';
+import { AgentRun, AgentStep, Hook, DEFAULT_HOOKS, MCPServer, BUILTIN_MCP_SERVERS } from '@/types/agent';
 import { CLAUDE_SYSTEM_PROMPT } from '@/lib/claude-prompt';
 import { evaluatePermission, executeToolLocally } from '@/lib/tool-executor';
 import { getRunnerClient, IRunnerClient } from '@/lib/runner-client';
@@ -26,40 +27,13 @@ A simple TypeScript demo project.
 `;
 
 const DEMO_FILES: IDEFile[] = [
-  {
-    id: 'root-src', name: 'src', path: '/src', content: '', language: '',
-    parentId: null, isFolder: true,
-  },
-  {
-    id: 'f-claude-md', name: 'CLAUDE.md', path: '/CLAUDE.md',
-    content: CLAUDE_MD_CONTENT,
-    language: 'markdown', parentId: null, isFolder: false,
-  },
-  {
-    id: 'f-main', name: 'main.ts', path: '/src/main.ts',
-    content: `import { greet } from './utils';\n\nconst name = process.argv[2] || 'World';\nconsole.log(greet(name));\nconsole.log('Claude Code Cloud IDE is running!');\n`,
-    language: 'typescript', parentId: 'root-src', isFolder: false,
-  },
-  {
-    id: 'f-utils', name: 'utils.ts', path: '/src/utils.ts',
-    content: `export function greet(name: string): string {\n  return \`Hello, \${name}! Welcome to Claude Code.\`;\n}\n\nexport function add(a: number, b: number): number {\n  return a + b;\n}\n`,
-    language: 'typescript', parentId: 'root-src', isFolder: false,
-  },
-  {
-    id: 'f-readme', name: 'README.md', path: '/README.md',
-    content: `# Demo Project\n\nA simple TypeScript project to demonstrate the Claude Code Cloud IDE.\n\n## Getting Started\n\n\`\`\`bash\nnpm install\nnpm start\n\`\`\`\n\n## Features\n\n- TypeScript support\n- Claude AI assistance\n- Live preview\n`,
-    language: 'markdown', parentId: null, isFolder: false,
-  },
-  {
-    id: 'f-pkg', name: 'package.json', path: '/package.json',
-    content: `{\n  "name": "demo-project",\n  "version": "1.0.0",\n  "main": "src/main.ts",\n  "scripts": {\n    "start": "ts-node src/main.ts",\n    "test": "jest"\n  }\n}\n`,
-    language: 'json', parentId: null, isFolder: false,
-  },
-  {
-    id: 'f-tsconfig', name: 'tsconfig.json', path: '/tsconfig.json',
-    content: `{\n  "compilerOptions": {\n    "target": "ES2020",\n    "module": "commonjs",\n    "strict": true,\n    "outDir": "./dist"\n  },\n  "include": ["src/**/*"]\n}\n`,
-    language: 'json', parentId: null, isFolder: false,
-  },
+  { id: 'root-src', name: 'src', path: '/src', content: '', language: '', parentId: null, isFolder: true },
+  { id: 'f-claude-md', name: 'CLAUDE.md', path: '/CLAUDE.md', content: CLAUDE_MD_CONTENT, language: 'markdown', parentId: null, isFolder: false },
+  { id: 'f-main', name: 'main.ts', path: '/src/main.ts', content: `import { greet } from './utils';\n\nconst name = process.argv[2] || 'World';\nconsole.log(greet(name));\nconsole.log('Claude Code Cloud IDE is running!');\n`, language: 'typescript', parentId: 'root-src', isFolder: false },
+  { id: 'f-utils', name: 'utils.ts', path: '/src/utils.ts', content: `export function greet(name: string): string {\n  return \`Hello, \${name}! Welcome to Claude Code.\`;\n}\n\nexport function add(a: number, b: number): number {\n  return a + b;\n}\n`, language: 'typescript', parentId: 'root-src', isFolder: false },
+  { id: 'f-readme', name: 'README.md', path: '/README.md', content: `# Demo Project\n\nA simple TypeScript project to demonstrate the Claude Code Cloud IDE.\n\n## Getting Started\n\n\`\`\`bash\nnpm install\nnpm start\n\`\`\`\n\n## Features\n\n- TypeScript support\n- Claude AI assistance\n- Live preview\n`, language: 'markdown', parentId: null, isFolder: false },
+  { id: 'f-pkg', name: 'package.json', path: '/package.json', content: `{\n  "name": "demo-project",\n  "version": "1.0.0",\n  "main": "src/main.ts",\n  "scripts": {\n    "start": "ts-node src/main.ts",\n    "test": "jest"\n  }\n}\n`, language: 'json', parentId: null, isFolder: false },
+  { id: 'f-tsconfig', name: 'tsconfig.json', path: '/tsconfig.json', content: `{\n  "compilerOptions": {\n    "target": "ES2020",\n    "module": "commonjs",\n    "strict": true,\n    "outDir": "./dist"\n  },\n  "include": ["src/**/*"]\n}\n`, language: 'json', parentId: null, isFolder: false },
 ];
 
 interface IDEContextType {
@@ -96,28 +70,36 @@ interface IDEContextType {
   applyPatch: (patchId: string) => void;
   applyPatchAndRun: (patchId: string, command: string) => void;
   cancelPatch: (patchId: string) => void;
-  // Runner session
+  // Runner
   runnerSession: RunnerSession | null;
   killRunningProcess: () => void;
-  // Convenience
   sendErrorsToChat: () => void;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
+  // Agent
+  agentRun: AgentRun | null;
+  startAgent: (goal: string) => void;
+  stopAgent: () => void;
+  pauseAgent: () => void;
+  // Hooks
+  hooks: Hook[];
+  toggleHook: (id: string) => void;
+  addHook: (hook: Omit<Hook, 'id'>) => void;
+  removeHook: (id: string) => void;
+  // MCP
+  mcpServers: MCPServer[];
+  toggleMCPServer: (id: string) => void;
+  // Panel
+  activeRightPanel: 'chat' | 'agent';
+  setActiveRightPanel: (panel: 'chat' | 'agent') => void;
 }
 
 const IDEContext = createContext<IDEContextType | null>(null);
 
 export function IDEProvider({ children }: { children: React.ReactNode }) {
-  const [project] = useState<Project>({
-    id: 'demo-1',
-    name: 'demo-project',
-    runtimeType: 'node',
-    files: [],
-  });
-
+  const [project] = useState<Project>({ id: 'demo-1', name: 'demo-project', runtimeType: 'node', files: [] });
   const runnerClientRef = useRef<IRunnerClient>(getRunnerClient());
   const [runnerSession, setRunnerSession] = useState<RunnerSession | null>(null);
-
   const [files, setFiles] = useState<IDEFile[]>(DEMO_FILES);
   const [openTabs, setOpenTabs] = useState<OpenTab[]>([
     { fileId: 'f-main', name: 'main.ts', path: '/src/main.ts', isModified: false },
@@ -125,9 +107,8 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   const [activeTabId, setActiveTabId] = useState<string | null>('f-main');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
-      id: 'welcome',
-      role: 'assistant',
-      content: "Hello! I'm Claude, your AI coding assistant. I can help you write, debug, and refactor code. Select some code or mention a file to get started.\n\nTry asking me to:\n- Explain a function\n- Add error handling\n- Write tests\n- Refactor code",
+      id: 'welcome', role: 'assistant',
+      content: "Hello! I'm Claude, your AI coding assistant. I can help you write, debug, and refactor code. Select some code or mention a file to get started.\n\nTry asking me to:\n- Explain a function\n- Add error handling\n- Write tests\n- Refactor code\n\n**Agent Mode**: Click the 🧠 Agent tab to run autonomous multi-step tasks.",
       timestamp: new Date(),
     },
   ]);
@@ -139,6 +120,19 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   const [pendingPatches, setPendingPatches] = useState<PatchPreview[]>([]);
   const [permissionPolicy, setPermissionPolicy] = useState<PermissionPolicy>(DEFAULT_PERMISSION_POLICY);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  // Agent state
+  const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
+  const agentAbortRef = useRef(false);
+
+  // Hooks state
+  const [hooks, setHooks] = useState<Hook[]>(DEFAULT_HOOKS);
+
+  // MCP state
+  const [mcpServers, setMcpServers] = useState<MCPServer[]>(BUILTIN_MCP_SERVERS);
+
+  // Panel state
+  const [activeRightPanel, setActiveRightPanel] = useState<'chat' | 'agent'>('chat');
 
   const toggleTheme = useCallback(() => {
     setTheme(prev => {
@@ -185,11 +179,8 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
       py: 'python', css: 'css', html: 'html',
     };
     const newFile: IDEFile = {
-      id: `f-${Date.now()}`,
-      name, path,
-      content: isFolder ? '' : '',
-      language: langMap[ext] || 'plaintext',
-      parentId, isFolder,
+      id: `f-${Date.now()}`, name, path, content: isFolder ? '' : '',
+      language: langMap[ext] || 'plaintext', parentId, isFolder,
     };
     setFiles(prev => [...prev, newFile]);
     if (!isFolder) openFile(newFile.id);
@@ -209,18 +200,13 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
       }
       return f;
     }));
-    setOpenTabs(prev => prev.map(t => {
-      if (t.fileId === fileId) return { ...t, name: newName };
-      return t;
-    }));
+    setOpenTabs(prev => prev.map(t => t.fileId === fileId ? { ...t, name: newName } : t));
   }, []);
 
   // ─── Tool Execution ───
 
   const executeAndUpdateTool = useCallback((call: ToolCall) => {
     setToolCalls(prev => prev.map(tc => tc.id === call.id ? { ...tc, status: 'running' as const } : tc));
-
-    // Use setTimeout to simulate async execution
     setTimeout(() => {
       const result = executeToolLocally(call, files);
       setToolCalls(prev => prev.map(tc =>
@@ -246,16 +232,14 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
 
   const alwaysAllowTool = useCallback((toolName: ToolName) => {
     setPermissionPolicy(prev => ({
-      ...prev,
-      allowedTools: [...prev.allowedTools.filter(t => t !== toolName), toolName],
+      ...prev, allowedTools: [...prev.allowedTools.filter(t => t !== toolName), toolName],
     }));
   }, []);
 
   const alwaysAllowCommand = useCallback((command: string) => {
     const prefix = command.split(' ').slice(0, 2).join(' ');
     setPermissionPolicy(prev => ({
-      ...prev,
-      allowedCommands: [...prev.allowedCommands.filter(c => c !== prefix), prefix],
+      ...prev, allowedCommands: [...prev.allowedCommands.filter(c => c !== prefix), prefix],
     }));
   }, []);
 
@@ -264,18 +248,14 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   const applyPatchToFiles = useCallback((patchId: string) => {
     const patchPreview = pendingPatches.find(p => p.id === patchId);
     if (!patchPreview) return false;
-
     try {
       let allApplied = true;
       for (const patch of patchPreview.patches) {
         const isNewFile = patch.oldFile === '/dev/null';
-
         if (isNewFile) {
-          // Create new file from patch
           const newContent = patch.hunks
             .flatMap(h => h.lines.filter(l => l.type === 'add').map(l => l.content))
             .join('\n');
-
           const name = patch.newFile.split('/').pop() || patch.newFile;
           const path = patch.newFile.startsWith('/') ? patch.newFile : `/${patch.newFile}`;
           const ext = name.split('.').pop() || '';
@@ -284,39 +264,26 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
             jsx: 'javascriptreact', json: 'json', md: 'markdown',
             py: 'python', css: 'css', html: 'html',
           };
-
-          // Determine parent folder
           const parentPath = path.split('/').slice(0, -1).join('/') || '/';
           const parent = files.find(f => f.path === parentPath && f.isFolder);
-
           const newFile: IDEFile = {
             id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             name, path, content: newContent,
             language: langMap[ext] || 'plaintext',
-            parentId: parent?.id || null,
-            isFolder: false,
+            parentId: parent?.id || null, isFolder: false,
           };
           setFiles(prev => [...prev, newFile]);
-          // Open the new file
           setOpenTabs(prev => [...prev, { fileId: newFile.id, name: newFile.name, path: newFile.path, isModified: false }]);
           setActiveTabId(newFile.id);
         } else {
-          // Apply to existing file
           const targetPath = patch.newFile.startsWith('/') ? patch.newFile : `/${patch.newFile}`;
           const file = files.find(f => f.path === targetPath);
-          if (!file) {
-            allApplied = false;
-            continue;
-          }
+          if (!file) { allApplied = false; continue; }
           const newContent = applyPatchToContent(file.content, patch);
-          if (newContent === null) {
-            allApplied = false;
-            continue;
-          }
+          if (newContent === null) { allApplied = false; continue; }
           setFiles(prev => prev.map(f => f.path === targetPath ? { ...f, content: newContent } : f));
         }
       }
-
       setPendingPatches(prev => prev.map(p =>
         p.id === patchId
           ? { ...p, status: allApplied ? 'applied' : 'failed', error: allApplied ? undefined : 'Some hunks could not be applied' }
@@ -325,41 +292,24 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
       return allApplied;
     } catch (err) {
       setPendingPatches(prev => prev.map(p =>
-        p.id === patchId
-          ? { ...p, status: 'failed' as const, error: err instanceof Error ? err.message : 'Unknown error' }
-          : p
+        p.id === patchId ? { ...p, status: 'failed' as const, error: err instanceof Error ? err.message : 'Unknown error' } : p
       ));
       return false;
     }
   }, [pendingPatches, files]);
 
-  const applyPatch = useCallback((patchId: string) => {
-    applyPatchToFiles(patchId);
-  }, [applyPatchToFiles]);
+  const applyPatch = useCallback((patchId: string) => { applyPatchToFiles(patchId); }, [applyPatchToFiles]);
 
   const applyPatchAndRun = useCallback((patchId: string, command: string) => {
     const success = applyPatchToFiles(patchId);
     if (success) {
-      // Run the command after applying
       setShowOutput(true);
-      const run: RunResult = {
-        id: `run-${Date.now()}`,
-        command,
-        status: 'running',
-        logs: `$ ${command}\n`,
-        timestamp: new Date(),
-      };
+      const run: RunResult = { id: `run-${Date.now()}`, command, status: 'running', logs: `$ ${command}\n`, timestamp: new Date() };
       setRuns(prev => [...prev, run]);
-
       setTimeout(() => {
         setRuns(prev => prev.map(r =>
           r.id === run.id
-            ? {
-                ...r,
-                status: 'success' as const,
-                logs: r.logs + `\n> Running after patch applied...\n\n✓ Process exited with code 0\n`,
-                exitCode: 0,
-              }
+            ? { ...r, status: 'success' as const, logs: r.logs + `\n> Running after patch applied...\n\n✓ Process exited with code 0\n`, exitCode: 0 }
             : r
         ));
       }, 1500);
@@ -367,21 +317,13 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   }, [applyPatchToFiles]);
 
   const cancelPatch = useCallback((patchId: string) => {
-    setPendingPatches(prev => prev.map(p =>
-      p.id === patchId ? { ...p, status: 'cancelled' as const } : p
-    ));
+    setPendingPatches(prev => prev.map(p => p.id === patchId ? { ...p, status: 'cancelled' as const } : p));
   }, []);
 
   // ─── Messaging ───
 
   const sendMessage = useCallback((content: string, chips?: ChatMessage['contextChips']) => {
-    const userMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      role: 'user',
-      content,
-      timestamp: new Date(),
-      contextChips: chips,
-    };
+    const userMsg: ChatMessage = { id: `msg-${Date.now()}`, role: 'user', content, timestamp: new Date(), contextChips: chips };
     setChatMessages(prev => [...prev, userMsg]);
 
     const contextParts: string[] = [];
@@ -392,31 +334,30 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
         else if (chip.type === 'errors') contextParts.push(`[Last run errors]\n${chip.content}`);
       }
     }
-    // Always inject CLAUDE.md as base context
     const claudeMd = files.find(f => f.path === '/CLAUDE.md');
     if (claudeMd && claudeMd.content.trim()) {
       contextParts.unshift(`[CLAUDE.md — Project Brief]\n${claudeMd.content}`);
     }
     const contextBlock = contextParts.length > 0 ? `\n\nContext provided:\n${contextParts.join('\n\n')}` : '';
 
-    // TODO: Replace with real API call to POST /api/claude
     setTimeout(() => {
       const response = generateMockResponse(content, contextBlock);
-
-      const assistantMsg: ChatMessage = {
-        id: `msg-${Date.now() + 1}`,
-        role: 'assistant',
-        content: response,
-        timestamp: new Date(),
-      };
+      const assistantMsg: ChatMessage = { id: `msg-${Date.now() + 1}`, role: 'assistant', content: response, timestamp: new Date() };
       setChatMessages(prev => [...prev, assistantMsg]);
 
-      // Extract and process tool calls from mock response
       const mockToolCalls = generateMockToolCalls(content);
       if (mockToolCalls.length > 0) {
         setToolCalls(prev => [...prev, ...mockToolCalls]);
-        // Auto-execute allowed tools
         for (const tc of mockToolCalls) {
+          // Run hooks
+          const hookResult = evaluateHooks('PreToolUse', tc, hooks);
+          if (hookResult === 'deny') {
+            setToolCalls(prev => prev.map(t =>
+              t.id === tc.id ? { ...t, status: 'denied' as const, result: { ok: false, error: 'Blocked by hook policy' } } : t
+            ));
+            continue;
+          }
+
           const decision = evaluatePermission(tc, permissionPolicy);
           if (decision === 'allow') {
             setTimeout(() => executeAndUpdateTool(tc), 100);
@@ -425,35 +366,26 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
               t.id === tc.id ? { ...t, status: 'denied' as const, result: { ok: false, error: 'Blocked by permission policy' } } : t
             ));
           }
-          // 'ask' tools remain pending for user approval
         }
       }
 
-      // Extract diff patches from response
       const diffRaw = extractDiffFromMessage(response);
       if (diffRaw) {
         const parsed = parseUnifiedDiff(diffRaw);
         if (parsed.length > 0) {
-          const commands = extractCommandsFromMessage(response);
-          const patchPreview: PatchPreview = {
-            id: `patch-${Date.now()}`,
-            patches: parsed,
-            raw: diffRaw,
-            status: 'preview',
-          };
+          const patchPreview: PatchPreview = { id: `patch-${Date.now()}`, patches: parsed, raw: diffRaw, status: 'preview' };
           setPendingPatches(prev => [...prev, patchPreview]);
         }
       }
     }, 800);
-  }, [files, project.id, permissionPolicy, executeAndUpdateTool]);
+  }, [files, permissionPolicy, executeAndUpdateTool, hooks]);
 
-  // ─── Runner Session Management ───
+  // ─── Runner Session ───
 
   const ensureSession = useCallback(async (): Promise<RunnerSession> => {
     if (runnerSession && runnerSession.status === 'ready') return runnerSession;
     const client = runnerClientRef.current;
     const session = await client.createSession(project.id, project.runtimeType);
-    // Sync workspace files into the session
     await client.syncWorkspace(session.id, files.filter(f => !f.isFolder));
     setRunnerSession(session);
     return session;
@@ -470,46 +402,26 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
 
   const runCommand = useCallback(async (command: string) => {
     setShowOutput(true);
-    const run: RunResult = {
-      id: `run-${Date.now()}`,
-      command,
-      status: 'running',
-      logs: `$ ${command}\n`,
-      timestamp: new Date(),
-    };
+    const run: RunResult = { id: `run-${Date.now()}`, command, status: 'running', logs: `$ ${command}\n`, timestamp: new Date() };
     setRuns(prev => [...prev, run]);
-
     try {
       const session = await ensureSession();
-      const result = await runnerClientRef.current.exec(session.id, {
-        command,
-        timeoutS: 600,
-      });
-
+      const result = await runnerClientRef.current.exec(session.id, { command, timeoutS: 600 });
       setRunnerSession(prev => prev ? { ...prev, cwd: result.cwd, status: 'ready' } : null);
-
       setRuns(prev => prev.map(r =>
         r.id === run.id
           ? {
               ...r,
               status: result.ok ? 'success' as const : 'error' as const,
               logs: r.logs + (result.stdout || '') + (result.stderr ? `\nSTDERR:\n${result.stderr}` : '') + `\n\n${result.ok ? '✓' : '✗'} Process exited with code ${result.exitCode}\n`,
-              exitCode: result.exitCode,
-              cwd: result.cwd,
-              durationMs: result.durationMs,
-              sessionId: session.id,
+              exitCode: result.exitCode, cwd: result.cwd, durationMs: result.durationMs, sessionId: session.id,
             }
           : r
       ));
     } catch (err) {
       setRuns(prev => prev.map(r =>
         r.id === run.id
-          ? {
-              ...r,
-              status: 'error' as const,
-              logs: r.logs + `\n⚠ Runner error: ${err instanceof Error ? err.message : 'Unknown error'}\n`,
-              exitCode: 1,
-            }
+          ? { ...r, status: 'error' as const, logs: r.logs + `\n⚠ Runner error: ${err instanceof Error ? err.message : 'Unknown error'}\n`, exitCode: 1 }
           : r
       ));
     }
@@ -518,13 +430,105 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   const sendErrorsToChat = useCallback(() => {
     const lastRun = runs[runs.length - 1];
     if (!lastRun) return;
-    const errorChips: ContextChip[] = [{
-      type: 'errors',
-      label: 'Last Run',
-      content: lastRun.logs,
-    }];
+    const errorChips: ContextChip[] = [{ type: 'errors', label: 'Last Run', content: lastRun.logs }];
     sendMessage('Here are the errors from my last run. Please analyze and fix them.', errorChips);
   }, [runs, sendMessage]);
+
+  // ─── Agent Orchestrator ───
+
+  const startAgent = useCallback((goal: string) => {
+    agentAbortRef.current = false;
+    const run: AgentRun = {
+      id: `agent-${Date.now()}`,
+      goal,
+      status: 'running',
+      steps: [],
+      iteration: 0,
+      maxIterations: 10,
+      startedAt: new Date(),
+    };
+    setAgentRun(run);
+    setActiveRightPanel('agent');
+
+    // Simulate agent loop
+    const addStep = (step: AgentStep) => {
+      setAgentRun(prev => prev ? { ...prev, steps: [...prev.steps, step] } : null);
+    };
+
+    const runLoop = async () => {
+      const steps: Array<{ type: AgentStep['type']; label: string; detail?: string; delayMs: number }> = [
+        { type: 'think', label: 'Analyzing goal', detail: goal, delayMs: 800 },
+        { type: 'tool_call', label: 'Reading project files', detail: 'list_files(src/**/*)', delayMs: 600 },
+        { type: 'tool_call', label: 'Reading main.ts', detail: 'read_file(/src/main.ts)', delayMs: 400 },
+        { type: 'think', label: 'Planning changes', detail: 'Identifying required modifications', delayMs: 700 },
+        { type: 'patch', label: 'Generating patch', detail: 'src/utils.ts — adding validation', delayMs: 900 },
+        { type: 'run', label: 'Running tests', detail: 'npm test', delayMs: 1500 },
+        { type: 'evaluate', label: 'Evaluating results', detail: 'All tests passed', delayMs: 500 },
+        { type: 'done', label: 'Goal completed', detail: 'All changes applied and verified', delayMs: 300 },
+      ];
+
+      for (let i = 0; i < steps.length; i++) {
+        if (agentAbortRef.current) {
+          addStep({
+            id: `step-${Date.now()}`, type: 'error', label: 'Cancelled by user',
+            status: 'failed', startedAt: new Date(), completedAt: new Date(),
+          });
+          setAgentRun(prev => prev ? { ...prev, status: 'cancelled', completedAt: new Date() } : null);
+          return;
+        }
+
+        const s = steps[i];
+        const stepId = `step-${Date.now()}-${i}`;
+        addStep({ id: stepId, type: s.type, label: s.label, detail: s.detail, status: 'running', startedAt: new Date() });
+        setAgentRun(prev => prev ? { ...prev, iteration: Math.floor(i / 3) + 1 } : null);
+
+        await new Promise(r => setTimeout(r, s.delayMs));
+
+        setAgentRun(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            steps: prev.steps.map(st =>
+              st.id === stepId ? { ...st, status: 'completed' as const, completedAt: new Date(), durationMs: s.delayMs } : st
+            ),
+          };
+        });
+      }
+
+      setAgentRun(prev => prev ? { ...prev, status: 'completed', completedAt: new Date() } : null);
+    };
+
+    runLoop();
+  }, []);
+
+  const stopAgent = useCallback(() => {
+    agentAbortRef.current = true;
+  }, []);
+
+  const pauseAgent = useCallback(() => {
+    setAgentRun(prev => prev ? { ...prev, status: 'paused' } : null);
+    agentAbortRef.current = true;
+  }, []);
+
+  // ─── Hooks ───
+
+  const toggleHook = useCallback((id: string) => {
+    setHooks(prev => prev.map(h => h.id === id ? { ...h, enabled: !h.enabled } : h));
+  }, []);
+
+  const addHook = useCallback((hook: Omit<Hook, 'id'>) => {
+    setHooks(prev => [...prev, { ...hook, id: `hook-${Date.now()}` }]);
+  }, []);
+
+  const removeHook = useCallback((id: string) => {
+    setHooks(prev => prev.filter(h => h.id !== id));
+  }, []);
+
+  // ─── MCP ───
+
+  const toggleMCPServer = useCallback((id: string) => {
+    setMcpServers(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
+  }, []);
 
   return (
     <IDEContext.Provider value={{
@@ -542,6 +546,10 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
       runnerSession, killRunningProcess,
       sendErrorsToChat,
       theme, toggleTheme,
+      agentRun, startAgent, stopAgent, pauseAgent,
+      hooks, toggleHook, addHook, removeHook,
+      mcpServers, toggleMCPServer,
+      activeRightPanel, setActiveRightPanel,
     }}>
       {children}
     </IDEContext.Provider>
@@ -554,136 +562,55 @@ export const useIDE = () => {
   return ctx;
 };
 
+// ─── Hooks Evaluator ───
+
+function evaluateHooks(event: 'PreToolUse' | 'PostToolUse', call: ToolCall, hooks: Hook[]): 'allow' | 'deny' | 'pass' {
+  for (const hook of hooks.filter(h => h.enabled && h.event === event)) {
+    const toolMatch = hook.toolPattern === '*' || hook.toolPattern === call.tool;
+    if (!toolMatch) continue;
+
+    if (hook.commandPattern && call.tool === 'run_command') {
+      const cmd = (call.input as { command: string }).command;
+      if (new RegExp(hook.commandPattern).test(cmd)) {
+        if (hook.action === 'deny') return 'deny';
+        if (hook.action === 'allow') return 'allow';
+      }
+    } else if (!hook.commandPattern && toolMatch) {
+      if (hook.action === 'deny') return 'deny';
+      if (hook.action === 'allow') return 'allow';
+    }
+  }
+  return 'pass';
+}
+
 // ─── Mock Generators ───
 
 function generateMockToolCalls(userMessage: string): ToolCall[] {
   const lc = userMessage.toLowerCase();
   const calls: ToolCall[] = [];
-
-  // Simulate Claude reading files before making suggestions
   if (lc.includes('refactor') || lc.includes('improve') || lc.includes('fix')) {
-    calls.push({
-      id: `tc-${Date.now()}-read`,
-      tool: 'read_file',
-      input: { path: '/src/utils.ts' },
-      status: 'pending',
-      timestamp: new Date(),
-    });
+    calls.push({ id: `tc-${Date.now()}-read`, tool: 'read_file', input: { path: '/src/utils.ts' }, status: 'pending', timestamp: new Date() });
   }
-
   if (lc.includes('test')) {
-    calls.push({
-      id: `tc-${Date.now()}-grep`,
-      tool: 'grep',
-      input: { pattern: 'export function', paths_glob: 'src/**/*.ts' },
-      status: 'pending',
-      timestamp: new Date(),
-    });
-    calls.push({
-      id: `tc-${Date.now()}-run`,
-      tool: 'run_command',
-      input: { command: 'npm test', cwd: '.', timeout_s: 60 },
-      status: 'pending',
-      timestamp: new Date(),
-    });
+    calls.push({ id: `tc-${Date.now()}-grep`, tool: 'grep', input: { pattern: 'export function', paths_glob: 'src/**/*.ts' }, status: 'pending', timestamp: new Date() });
+    calls.push({ id: `tc-${Date.now()}-run`, tool: 'run_command', input: { command: 'npm test', cwd: '.', timeout_s: 60 }, status: 'pending', timestamp: new Date() });
   }
-
   if (lc.includes('search') || lc.includes('find')) {
-    calls.push({
-      id: `tc-${Date.now()}-list`,
-      tool: 'list_files',
-      input: { glob: 'src/**/*' },
-      status: 'pending',
-      timestamp: new Date(),
-    });
+    calls.push({ id: `tc-${Date.now()}-list`, tool: 'list_files', input: { glob: 'src/**/*' }, status: 'pending', timestamp: new Date() });
   }
-
   return calls;
 }
 
 function generateMockResponse(userMessage: string, context: string): string {
   const lc = userMessage.toLowerCase();
-
   if (lc.includes('test')) {
-    return `**Plan:**
-- Add unit tests for \`greet\` and \`add\` functions
-- Use Jest as the testing framework
-- Cover edge cases and boundary conditions
-
-\`\`\`diff
---- /dev/null
-+++ src/utils.test.ts
-@@ -0,0 +1,19 @@
-+import { greet, add } from './utils';
-+
-+describe('greet', () => {
-+  it('should greet with name', () => {
-+    expect(greet('Claude')).toBe('Hello, Claude! Welcome to Claude Code.');
-+  });
-+});
-+
-+describe('add', () => {
-+  it('should add two numbers', () => {
-+    expect(add(2, 3)).toBe(5);
-+  });
-+
-+  it('should handle negative numbers', () => {
-+    expect(add(-1, 1)).toBe(0);
-+  });
-+});
-\`\`\`
-
-\`\`\`
-npm test
-\`\`\``;
+    return `**Plan:**\n- Add unit tests for \`greet\` and \`add\` functions\n- Use Jest as the testing framework\n- Cover edge cases and boundary conditions\n\n\`\`\`diff\n--- /dev/null\n+++ src/utils.test.ts\n@@ -0,0 +1,19 @@\n+import { greet, add } from './utils';\n+\n+describe('greet', () => {\n+  it('should greet with name', () => {\n+    expect(greet('Claude')).toBe('Hello, Claude! Welcome to Claude Code.');\n+  });\n+});\n+\n+describe('add', () => {\n+  it('should add two numbers', () => {\n+    expect(add(2, 3)).toBe(5);\n+  });\n+\n+  it('should handle negative numbers', () => {\n+    expect(add(-1, 1)).toBe(0);\n+  });\n+});\n\`\`\`\n\n\`\`\`\nnpm test\n\`\`\``;
   }
-
   if (lc.includes('fix') || lc.includes('bug') || lc.includes('error')) {
-    return `**Plan:**
-- Inspect the reported issue${context ? ' with provided context' : ''}
-- Identify root cause
-- Apply minimal fix
-
-I'd need to see the specific error output. Attach \`@errors:lastRun\` or paste the stack trace so I can generate a precise patch.`;
+    return `**Plan:**\n- Inspect the reported issue${context ? ' with provided context' : ''}\n- Identify root cause\n- Apply minimal fix\n\nI'd need to see the specific error output. Attach \`@errors:lastRun\` or paste the stack trace so I can generate a precise patch.`;
   }
-
   if (lc.includes('refactor') || lc.includes('improve') || lc.includes('clean')) {
-    return `**Plan:**
-- Review current implementation${context ? '\n- Analyze provided context' : ''}
-- Extract reusable helpers
-- Improve type safety
-- Reduce duplication
-
-\`\`\`diff
---- a/src/utils.ts
-+++ b/src/utils.ts
-@@ -1,4 +1,8 @@
-+/** Generates a greeting message for the given name. */
- export function greet(name: string): string {
-+  if (!name?.trim()) {
-+    throw new Error('Name must be a non-empty string');
-+  }
-   return \`Hello, \${name}! Welcome to Claude Code.\`;
- }
-\`\`\`
-
-\`\`\`
-npm test
-\`\`\`
-
-**Notes:** Added input validation and JSDoc. Run tests to verify nothing breaks.`;
+    return `**Plan:**\n- Review current implementation${context ? '\n- Analyze provided context' : ''}\n- Extract reusable helpers\n- Improve type safety\n\n\`\`\`diff\n--- a/src/utils.ts\n+++ b/src/utils.ts\n@@ -1,4 +1,8 @@\n+/** Generates a greeting message for the given name. */\n export function greet(name: string): string {\n+  if (!name?.trim()) {\n+    throw new Error('Name must be a non-empty string');\n+  }\n   return \`Hello, \${name}! Welcome to Claude Code.\`;\n }\n\`\`\`\n\n\`\`\`\nnpm test\n\`\`\`\n\n**Notes:** Added input validation and JSDoc. Run tests to verify nothing breaks.`;
   }
-
-  return `**Plan:**
-- Analyze request${context ? ' with provided context' : ''}
-- Identify relevant files
-- Propose minimal changes
-
-I've reviewed your request. Here's what I suggest:
-
-1. The current code structure looks solid
-2. I can help with specific changes — try selecting code and using \`@selection\`, or attach a file with \`@file\`
-3. For bug fixes, attach \`@errors\` from the last run
-
-What specific change would you like me to make?`;
+  return `**Plan:**\n- Analyze request${context ? ' with provided context' : ''}\n- Identify relevant files\n- Propose minimal changes\n\nI've reviewed your request. Here's what I suggest:\n\n1. The current code structure looks solid\n2. I can help with specific changes — try selecting code and using \`@selection\`, or attach a file with \`@file\`\n3. For bug fixes, attach \`@errors\` from the last run\n\nWhat specific change would you like me to make?`;
 }

@@ -1,20 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, AtSign, FileCode, AlertCircle, Sparkles, Copy } from 'lucide-react';
+import { Send, AtSign, FileCode, AlertCircle, Sparkles, Brain } from 'lucide-react';
 import { useIDE } from '@/contexts/IDEContext';
 import { ContextChip } from '@/types/ide';
 import { PermissionPrompt } from './PermissionPrompt';
 import { PatchPreviewPanel } from './PatchPreview';
 import { ToolCallDisplay } from './ToolCallDisplay';
-import { extractDiffFromMessage, extractCommandsFromMessage } from '@/lib/patch-utils';
+import { extractCommandsFromMessage } from '@/lib/patch-utils';
 
 export function ChatPanel() {
   const {
     chatMessages, sendMessage, selectedText, activeTabId, getFileById, runs,
     toolCalls, pendingPatches, approveToolCall, denyToolCall, alwaysAllowTool, alwaysAllowCommand,
     applyPatch, applyPatchAndRun, cancelPatch,
+    startAgent, setActiveRightPanel,
   } = useIDE();
   const [input, setInput] = useState('');
   const [chips, setChips] = useState<ContextChip[]>([]);
+  const [agentMode, setAgentMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -24,42 +26,36 @@ export function ChatPanel() {
 
   const addChip = (type: ContextChip['type']) => {
     if (type === 'selection' && selectedText) {
-      setChips(prev => [...prev.filter(c => c.type !== 'selection'), {
-        type: 'selection', label: 'Selection', content: selectedText,
-      }]);
+      setChips(prev => [...prev.filter(c => c.type !== 'selection'), { type: 'selection', label: 'Selection', content: selectedText }]);
     } else if (type === 'file' && activeTabId) {
       const file = getFileById(activeTabId);
       if (file) {
-        setChips(prev => [...prev.filter(c => !(c.type === 'file' && c.label === file.name)), {
-          type: 'file', label: file.name, content: file.content,
-        }]);
+        setChips(prev => [...prev.filter(c => !(c.type === 'file' && c.label === file.name)), { type: 'file', label: file.name, content: file.content }]);
       }
     } else if (type === 'errors') {
       const lastRun = runs[runs.length - 1];
       if (lastRun) {
-        setChips(prev => [...prev.filter(c => c.type !== 'errors'), {
-          type: 'errors', label: 'Last Run Errors', content: lastRun.logs,
-        }]);
+        setChips(prev => [...prev.filter(c => c.type !== 'errors'), { type: 'errors', label: 'Last Run Errors', content: lastRun.logs }]);
       }
     }
   };
 
-  const removeChip = (index: number) => {
-    setChips(prev => prev.filter((_, i) => i !== index));
-  };
+  const removeChip = (index: number) => setChips(prev => prev.filter((_, i) => i !== index));
 
   const handleSend = () => {
     if (!input.trim() && chips.length === 0) return;
-    sendMessage(input, chips.length > 0 ? chips : undefined);
+    if (agentMode) {
+      startAgent(input.trim());
+      setActiveRightPanel('agent');
+    } else {
+      sendMessage(input, chips.length > 0 ? chips : undefined);
+    }
     setInput('');
     setChips([]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
   const chipIcon = (type: string) => {
@@ -71,9 +67,7 @@ export function ChatPanel() {
     }
   };
 
-  // Get pending tool calls that need approval
   const pendingTools = toolCalls.filter(tc => tc.status === 'pending');
-  // Get recent completed/running tool calls for display
   const recentTools = toolCalls.filter(tc => tc.status !== 'pending').slice(-6);
 
   return (
@@ -92,122 +86,48 @@ export function ChatPanel() {
       {/* Messages */}
       <div className="flex-1 overflow-auto px-3 py-3 space-y-4">
         {chatMessages.map(msg => (
-          <div key={msg.id} className={`animate-fade-in ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
-            {msg.contextChips && msg.contextChips.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-1">
-                {msg.contextChips.map((chip, i) => (
-                  <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] rounded-sm">
-                    {chipIcon(chip.type)}
-                    {chip.label}
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className={`text-sm leading-relaxed ${
-              msg.role === 'user'
-                ? 'bg-primary/10 text-foreground rounded-lg px-3 py-2 max-w-[85%]'
-                : 'text-foreground'
-            }`}>
-              <div className="whitespace-pre-wrap font-mono text-xs">
-                {msg.content.split(/(`{3}[\s\S]*?`{3})/g).map((part, i) => {
-                  if (part.startsWith('```') && part.endsWith('```')) {
-                    const lines = part.split('\n');
-                    const lang = lines[0].replace('```', '');
-                    const code = lines.slice(1, -1).join('\n');
-                    const isDiff = lang === 'diff';
-                    return (
-                      <pre key={i} className="my-2 p-3 bg-muted rounded-md overflow-x-auto text-[11px]">
-                        {lang && <div className="text-[10px] text-muted-foreground mb-1">{lang}</div>}
-                        <code>
-                          {isDiff ? (
-                            code.split('\n').map((line, li) => (
-                              <div
-                                key={li}
-                                className={
-                                  line.startsWith('+') ? 'text-ide-success' :
-                                  line.startsWith('-') ? 'text-ide-error' :
-                                  line.startsWith('@@') ? 'text-ide-info' :
-                                  ''
-                                }
-                              >
-                                {line}
-                              </div>
-                            ))
-                          ) : code}
-                        </code>
-                      </pre>
-                    );
-                  }
-                  return <span key={i}>{part.split(/(\*\*.*?\*\*)/g).map((seg, j) => {
-                    if (seg.startsWith('**') && seg.endsWith('**')) {
-                      return <strong key={j} className="text-foreground font-semibold">{seg.slice(2, -2)}</strong>;
-                    }
-                    return seg;
-                  })}</span>;
-                })}
-              </div>
-            </div>
-          </div>
+          <ChatMessage key={msg.id} msg={msg} chipIcon={chipIcon} />
         ))}
 
-        {/* Tool calls display */}
         {recentTools.length > 0 && (
           <div className="space-y-1.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Tool Activity
-            </div>
-            {recentTools.map(tc => (
-              <ToolCallDisplay key={tc.id} toolCall={tc} />
-            ))}
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tool Activity</div>
+            {recentTools.map(tc => <ToolCallDisplay key={tc.id} toolCall={tc} />)}
           </div>
         )}
 
-        {/* Permission prompts */}
         {pendingTools.map(tc => (
           <PermissionPrompt
-            key={tc.id}
-            toolCall={tc}
+            key={tc.id} toolCall={tc}
             onApprove={() => approveToolCall(tc.id)}
             onDeny={() => denyToolCall(tc.id)}
             onAlwaysAllow={() => {
-              if (tc.tool === 'run_command') {
-                alwaysAllowCommand((tc.input as { command: string }).command);
-              } else {
-                alwaysAllowTool(tc.tool);
-              }
+              if (tc.tool === 'run_command') alwaysAllowCommand((tc.input as { command: string }).command);
+              else alwaysAllowTool(tc.tool);
               approveToolCall(tc.id);
             }}
           />
         ))}
 
-        {/* Patch previews */}
         {pendingPatches.filter(p => p.status === 'preview').map(patch => {
-          // Try to find suggested commands from the last assistant message
           const lastAssistantMsg = [...chatMessages].reverse().find(m => m.role === 'assistant');
           const commands = lastAssistantMsg ? extractCommandsFromMessage(lastAssistantMsg.content) : [];
-          const suggestedCmd = commands[0];
-
           return (
             <PatchPreviewPanel
-              key={patch.id}
-              patch={patch}
+              key={patch.id} patch={patch}
               onApply={() => applyPatch(patch.id)}
               onApplyAndRun={(cmd) => applyPatchAndRun(patch.id, cmd)}
               onCancel={() => cancelPatch(patch.id)}
               onCopyPatch={() => navigator.clipboard.writeText(patch.raw)}
-              suggestedCommand={suggestedCmd}
+              suggestedCommand={commands[0]}
             />
           );
         })}
 
-        {/* Show applied/failed patches */}
         {pendingPatches.filter(p => p.status !== 'preview').slice(-3).map(patch => (
           <PatchPreviewPanel
-            key={patch.id}
-            patch={patch}
-            onApply={() => {}}
-            onApplyAndRun={() => {}}
-            onCancel={() => {}}
+            key={patch.id} patch={patch}
+            onApply={() => {}} onApplyAndRun={() => {}} onCancel={() => {}}
             onCopyPatch={() => navigator.clipboard.writeText(patch.raw)}
           />
         ))}
@@ -219,11 +139,7 @@ export function ChatPanel() {
       {chips.length > 0 && (
         <div className="px-3 pb-1 flex flex-wrap gap-1">
           {chips.map((chip, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/15 text-primary text-[11px] rounded-sm cursor-pointer hover:bg-primary/25"
-              onClick={() => removeChip(i)}
-            >
+            <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/15 text-primary text-[11px] rounded-sm cursor-pointer hover:bg-primary/25" onClick={() => removeChip(i)}>
               {chipIcon(chip.type)}
               {chip.label}
               <CloseIcon className="h-2.5 w-2.5" />
@@ -235,32 +151,18 @@ export function ChatPanel() {
       {/* Input */}
       <div className="border-t border-border p-3 space-y-2">
         <div className="flex gap-1">
+          <button onClick={() => addChip('selection')} className={`text-[10px] px-2 py-1 rounded-sm transition-colors ${selectedText ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground'}`} disabled={!selectedText}>@selection</button>
+          <button onClick={() => addChip('file')} className={`text-[10px] px-2 py-1 rounded-sm transition-colors ${activeTabId ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground'}`} disabled={!activeTabId}>@file</button>
+          <button onClick={() => addChip('errors')} className={`text-[10px] px-2 py-1 rounded-sm transition-colors ${runs.length > 0 ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground'}`} disabled={runs.length === 0}>@errors</button>
+          <div className="flex-1" />
           <button
-            onClick={() => addChip('selection')}
-            className={`text-[10px] px-2 py-1 rounded-sm transition-colors ${
-              selectedText ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground'
+            onClick={() => setAgentMode(prev => !prev)}
+            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-sm transition-colors ${
+              agentMode ? 'bg-ide-warning/15 text-ide-warning' : 'bg-muted text-muted-foreground hover:bg-accent'
             }`}
-            disabled={!selectedText}
           >
-            @selection
-          </button>
-          <button
-            onClick={() => addChip('file')}
-            className={`text-[10px] px-2 py-1 rounded-sm transition-colors ${
-              activeTabId ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground'
-            }`}
-            disabled={!activeTabId}
-          >
-            @file
-          </button>
-          <button
-            onClick={() => addChip('errors')}
-            className={`text-[10px] px-2 py-1 rounded-sm transition-colors ${
-              runs.length > 0 ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground'
-            }`}
-            disabled={runs.length === 0}
-          >
-            @errors
+            <Brain className="h-3 w-3" />
+            {agentMode ? 'Agent ON' : 'Agent'}
           </button>
         </div>
         <div className="flex gap-2 items-end">
@@ -269,17 +171,78 @@ export function ChatPanel() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask Claude..."
+            placeholder={agentMode ? 'Describe a goal for the agent...' : 'Ask Claude...'}
             className="flex-1 bg-input text-foreground text-sm px-3 py-2 rounded-md border border-border resize-none outline-none focus:border-primary transition-colors min-h-[36px] max-h-[120px] font-sans"
             rows={1}
           />
           <button
             onClick={handleSend}
             disabled={!input.trim() && chips.length === 0}
-            className="p-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-30 transition-all shrink-0"
+            className={`p-2 rounded-md transition-all shrink-0 disabled:opacity-30 ${
+              agentMode
+                ? 'bg-ide-warning text-background hover:bg-ide-warning/90'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90'
+            }`}
           >
-            <Send className="h-4 w-4" />
+            {agentMode ? <Brain className="h-4 w-4" /> : <Send className="h-4 w-4" />}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sub-components ───
+
+function ChatMessage({ msg, chipIcon }: { msg: import('@/types/ide').ChatMessage; chipIcon: (type: string) => React.ReactNode }) {
+  return (
+    <div className={`animate-fade-in ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
+      {msg.contextChips && msg.contextChips.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1">
+          {msg.contextChips.map((chip, i) => (
+            <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] rounded-sm">
+              {chipIcon(chip.type)}
+              {chip.label}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className={`text-sm leading-relaxed ${
+        msg.role === 'user'
+          ? 'bg-primary/10 text-foreground rounded-lg px-3 py-2 max-w-[85%]'
+          : 'text-foreground'
+      }`}>
+        <div className="whitespace-pre-wrap font-mono text-xs">
+          {msg.content.split(/(`{3}[\s\S]*?`{3})/g).map((part, i) => {
+            if (part.startsWith('```') && part.endsWith('```')) {
+              const lines = part.split('\n');
+              const lang = lines[0].replace('```', '');
+              const code = lines.slice(1, -1).join('\n');
+              const isDiff = lang === 'diff';
+              return (
+                <pre key={i} className="my-2 p-3 bg-muted rounded-md overflow-x-auto text-[11px]">
+                  {lang && <div className="text-[10px] text-muted-foreground mb-1">{lang}</div>}
+                  <code>
+                    {isDiff ? (
+                      code.split('\n').map((line, li) => (
+                        <div key={li} className={
+                          line.startsWith('+') ? 'text-ide-success' :
+                          line.startsWith('-') ? 'text-ide-error' :
+                          line.startsWith('@@') ? 'text-ide-info' : ''
+                        }>{line}</div>
+                      ))
+                    ) : code}
+                  </code>
+                </pre>
+              );
+            }
+            return <span key={i}>{part.split(/(\*\*.*?\*\*)/g).map((seg, j) => {
+              if (seg.startsWith('**') && seg.endsWith('**')) {
+                return <strong key={j} className="text-foreground font-semibold">{seg.slice(2, -2)}</strong>;
+              }
+              return seg;
+            })}</span>;
+          })}
         </div>
       </div>
     </div>
