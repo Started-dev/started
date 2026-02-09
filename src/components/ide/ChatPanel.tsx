@@ -1,10 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, AtSign, FileCode, AlertCircle, Sparkles } from 'lucide-react';
+import { Send, AtSign, FileCode, AlertCircle, Sparkles, Copy } from 'lucide-react';
 import { useIDE } from '@/contexts/IDEContext';
 import { ContextChip } from '@/types/ide';
+import { PermissionPrompt } from './PermissionPrompt';
+import { PatchPreviewPanel } from './PatchPreview';
+import { ToolCallDisplay } from './ToolCallDisplay';
+import { extractDiffFromMessage, extractCommandsFromMessage } from '@/lib/patch-utils';
 
 export function ChatPanel() {
-  const { chatMessages, sendMessage, selectedText, activeTabId, getFileById, runs } = useIDE();
+  const {
+    chatMessages, sendMessage, selectedText, activeTabId, getFileById, runs,
+    toolCalls, pendingPatches, approveToolCall, denyToolCall, alwaysAllowTool, alwaysAllowCommand,
+    applyPatch, applyPatchAndRun, cancelPatch,
+  } = useIDE();
   const [input, setInput] = useState('');
   const [chips, setChips] = useState<ContextChip[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -12,7 +20,7 @@ export function ChatPanel() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
+  }, [chatMessages, toolCalls, pendingPatches]);
 
   const addChip = (type: ContextChip['type']) => {
     if (type === 'selection' && selectedText) {
@@ -63,12 +71,22 @@ export function ChatPanel() {
     }
   };
 
+  // Get pending tool calls that need approval
+  const pendingTools = toolCalls.filter(tc => tc.status === 'pending');
+  // Get recent completed/running tool calls for display
+  const recentTools = toolCalls.filter(tc => tc.status !== 'pending').slice(-6);
+
   return (
     <div className="h-full flex flex-col bg-card">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <Sparkles className="h-4 w-4 text-primary" />
         <span className="text-xs font-semibold uppercase tracking-wider">Claude</span>
+        {pendingTools.length > 0 && (
+          <span className="ml-auto text-[10px] px-1.5 py-0.5 bg-ide-warning/15 text-ide-warning rounded-sm animate-pulse">
+            {pendingTools.length} pending
+          </span>
+        )}
       </div>
 
       {/* Messages */}
@@ -96,14 +114,30 @@ export function ChatPanel() {
                     const lines = part.split('\n');
                     const lang = lines[0].replace('```', '');
                     const code = lines.slice(1, -1).join('\n');
+                    const isDiff = lang === 'diff';
                     return (
                       <pre key={i} className="my-2 p-3 bg-muted rounded-md overflow-x-auto text-[11px]">
                         {lang && <div className="text-[10px] text-muted-foreground mb-1">{lang}</div>}
-                        <code>{code}</code>
+                        <code>
+                          {isDiff ? (
+                            code.split('\n').map((line, li) => (
+                              <div
+                                key={li}
+                                className={
+                                  line.startsWith('+') ? 'text-ide-success' :
+                                  line.startsWith('-') ? 'text-ide-error' :
+                                  line.startsWith('@@') ? 'text-ide-info' :
+                                  ''
+                                }
+                              >
+                                {line}
+                              </div>
+                            ))
+                          ) : code}
+                        </code>
                       </pre>
                     );
                   }
-                  // Simple bold rendering
                   return <span key={i}>{part.split(/(\*\*.*?\*\*)/g).map((seg, j) => {
                     if (seg.startsWith('**') && seg.endsWith('**')) {
                       return <strong key={j} className="text-foreground font-semibold">{seg.slice(2, -2)}</strong>;
@@ -115,6 +149,69 @@ export function ChatPanel() {
             </div>
           </div>
         ))}
+
+        {/* Tool calls display */}
+        {recentTools.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Tool Activity
+            </div>
+            {recentTools.map(tc => (
+              <ToolCallDisplay key={tc.id} toolCall={tc} />
+            ))}
+          </div>
+        )}
+
+        {/* Permission prompts */}
+        {pendingTools.map(tc => (
+          <PermissionPrompt
+            key={tc.id}
+            toolCall={tc}
+            onApprove={() => approveToolCall(tc.id)}
+            onDeny={() => denyToolCall(tc.id)}
+            onAlwaysAllow={() => {
+              if (tc.tool === 'run_command') {
+                alwaysAllowCommand((tc.input as { command: string }).command);
+              } else {
+                alwaysAllowTool(tc.tool);
+              }
+              approveToolCall(tc.id);
+            }}
+          />
+        ))}
+
+        {/* Patch previews */}
+        {pendingPatches.filter(p => p.status === 'preview').map(patch => {
+          // Try to find suggested commands from the last assistant message
+          const lastAssistantMsg = [...chatMessages].reverse().find(m => m.role === 'assistant');
+          const commands = lastAssistantMsg ? extractCommandsFromMessage(lastAssistantMsg.content) : [];
+          const suggestedCmd = commands[0];
+
+          return (
+            <PatchPreviewPanel
+              key={patch.id}
+              patch={patch}
+              onApply={() => applyPatch(patch.id)}
+              onApplyAndRun={(cmd) => applyPatchAndRun(patch.id, cmd)}
+              onCancel={() => cancelPatch(patch.id)}
+              onCopyPatch={() => navigator.clipboard.writeText(patch.raw)}
+              suggestedCommand={suggestedCmd}
+            />
+          );
+        })}
+
+        {/* Show applied/failed patches */}
+        {pendingPatches.filter(p => p.status !== 'preview').slice(-3).map(patch => (
+          <PatchPreviewPanel
+            key={patch.id}
+            patch={patch}
+            onApply={() => {}}
+            onApplyAndRun={() => {}}
+            onCancel={() => {}}
+            onCopyPatch={() => navigator.clipboard.writeText(patch.raw)}
+          />
+        ))}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -129,7 +226,7 @@ export function ChatPanel() {
             >
               {chipIcon(chip.type)}
               {chip.label}
-              <X className="h-2.5 w-2.5" />
+              <CloseIcon className="h-2.5 w-2.5" />
             </span>
           ))}
         </div>
@@ -189,7 +286,7 @@ export function ChatPanel() {
   );
 }
 
-function X({ className }: { className?: string }) {
+function CloseIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M3 3l6 6M9 3l-6 6" />
