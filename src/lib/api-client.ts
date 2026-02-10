@@ -13,7 +13,7 @@ interface StreamChatOptions {
 }
 
 export async function streamChat({ messages, context, onDelta, onDone, onError, signal }: StreamChatOptions) {
-  const resp = await fetch(`${SUPABASE_URL}/functions/v1/claude`, {
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/started`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
