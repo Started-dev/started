@@ -1,6 +1,7 @@
 import { 
   Brain, Wrench, FileCode, Play, CheckCircle, XCircle, 
-  Loader2, SkipForward, Square, Clock, Zap, AlertTriangle 
+  Loader2, SkipForward, Square, Clock, Zap, AlertTriangle,
+  FilePlus2, FileEdit
 } from 'lucide-react';
 import { AgentRun, AgentStep, AgentStepType } from '@/types/agent';
 
@@ -108,7 +109,7 @@ export function AgentTimeline({ agentRun, onStop, onPause }: AgentTimelineProps)
           <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border" />
 
           <div className="space-y-1">
-            {agentRun.steps.map((step, i) => (
+            {agentRun.steps.map((step) => (
               <div key={step.id} className="relative flex items-start gap-2.5 py-1">
                 {/* Dot */}
                 <div className={`relative z-10 flex items-center justify-center w-4 h-4 rounded-full shrink-0 ${
@@ -142,6 +143,30 @@ export function AgentTimeline({ agentRun, onStop, onPause }: AgentTimelineProps)
                     <p className="text-[11px] text-muted-foreground mt-0.5 font-mono truncate">
                       {step.detail}
                     </p>
+                  )}
+
+                  {/* File changes indicator */}
+                  {step.filesChanged && step.filesChanged.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {step.filesChanged.map((fc) => (
+                        <span
+                          key={fc.path}
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-mono ${
+                            fc.action === 'created'
+                              ? 'bg-ide-success/10 text-ide-success'
+                              : 'bg-ide-info/10 text-ide-info'
+                          }`}
+                          title={`${fc.action}: ${fc.path}`}
+                        >
+                          {fc.action === 'created' ? (
+                            <FilePlus2 className="h-2.5 w-2.5" />
+                          ) : (
+                            <FileEdit className="h-2.5 w-2.5" />
+                          )}
+                          {fc.path.split('/').pop()}
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>

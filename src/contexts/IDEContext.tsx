@@ -653,6 +653,27 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
             }
           }
 
+          // Track which files were changed and add a step with file info
+          const filesChanged = parsed.map(patch => {
+            const filePath = patch.newFile.startsWith('/') ? patch.newFile : `/${patch.newFile}`;
+            const action: 'created' | 'modified' = patch.oldFile === '/dev/null' ? 'created' : 'modified';
+            return { path: filePath, action };
+          });
+
+          // Update the last patch step with file change info
+          setAgentRun(prev => {
+            if (!prev) return null;
+            const steps = [...prev.steps];
+            // Find the most recent patch step and add filesChanged
+            for (let i = steps.length - 1; i >= 0; i--) {
+              if (steps[i].type === 'patch' && !steps[i].filesChanged) {
+                steps[i] = { ...steps[i], filesChanged };
+                break;
+              }
+            }
+            return { ...prev, steps };
+          });
+
           // Mark patch as applied
           setPendingPatches(prev => prev.map(p =>
             p.raw === diff ? { ...p, status: 'applied' } : p
