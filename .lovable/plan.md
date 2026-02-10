@@ -1,146 +1,194 @@
 
 
-# Fix Project Creation Bugs, Eliminate Backend Errors, Polish UX, and Build the Runner
+# Real Claude Models via Anthropic API + StartedAI Custom Training
 
-## Problem Summary
+## What We're Building
 
-1. **Project creation fails silently** when the user hits the plan quota -- no user feedback
-2. **Console warnings** about refs in `ProjectSwitcher` (AlertDialog wrapping issue)
-3. **Runner is not real** -- terminal commands go to an edge function that can only handle builtins and inline eval, not actual `npm install`, `npm test`, etc.
-4. Several minor UX polish issues across the IDE
-
----
-
-## Phase 1: Fix Project Creation and Backend Bugs
-
-### 1.1 Fix silent project creation failure in ProjectSwitcher
-
-**Problem**: `createProject` in `use-project-persistence.ts` returns `null` silently when quota is exceeded. The `IDEContext.createProject` calls `createProjectRaw(name)` and if it returns `null`, nothing happens -- no toast, no error message.
-
-**Fix**:
-- In `use-project-persistence.ts` `createProject`: return an error object instead of just `null`, with a reason string (e.g., "Project limit reached")
-- In `IDEContext.tsx` `createProject`: show a `toast.error()` when creation fails, with the specific reason
-- In `ProjectSwitcher.tsx`: keep the input populated and show inline feedback when creation fails
-
-### 1.2 Fix forwardRef console warnings
-
-**Problem**: `ProjectSwitcher` is wrapped in an `AlertDialog` but the component itself isn't forwarding refs correctly, causing React warnings.
-
-**Fix**: The `AlertDialog` is used correctly at the JSX level, but the component function lacks `forwardRef`. Since `ProjectSwitcher` doesn't actually need a ref, the real fix is to ensure the `AlertDialog` isn't wrapping the component itself -- it's already rendered as a sibling. The warnings come from Radix internals; we can suppress by ensuring `AlertDialogContent` receives its ref properly. This is a known Radix/React 18 issue -- no code change needed, but we can add `React.forwardRef` to `ProjectSwitcher` to silence it.
-
-### 1.3 Add user-facing error toasts for all backend failures
-
-**Problem**: Multiple `console.error` calls in `use-project-persistence.ts` (switchProject, renameProject, deleteProject) silently fail.
-
-**Fix**: Add `toast.error()` calls alongside every `console.error` in the persistence hook so users always see feedback.
+1. **Claude models** connect to the real Anthropic API using your Enterprise key (not the Lovable gateway)
+2. **StartedAI** maps to `google/gemini-3-pro-preview` via the Lovable gateway with a custom-trained system prompt, optimized for minimal token usage
+3. **Per-model rate limiting** based on Free/Paid plan tiers, designed for profitability
 
 ---
 
-## Phase 2: UX Polish
+## Architecture
 
-### 2.1 ProjectSwitcher creation feedback
-- Show a loading spinner on the "Create" button while creation is in-flight
-- Show toast on success: "Project created: {name}"
-- Show toast on failure: "Cannot create project: {reason}"
+The edge function becomes a **multi-provider router**:
 
-### 2.2 Terminal "command not found" messaging
-- When the runner returns exit code 127, show a cleaner message: "This command requires a connected runner. Built-in support: echo, pwd, node -e, python -c"
-- Add a visual indicator in the terminal header showing runner status (Connected / Sandbox Only)
-
-### 2.3 Model selector default highlight
-- Ensure StartedAI shows a "(default)" badge in the selector dropdown
+```text
+User selects model
+       |
+  [Edge Function]
+       |
+  +----+----+----+
+  |         |         |
+Lovable    Anthropic   Lovable
+Gateway    API         Gateway
+  |         |           |
+StartedAI  Claude      Gemini/GPT
+(gemini-3  models      (passthrough)
+ pro +
+ custom
+ prompt)
+```
 
 ---
 
-## Phase 3: Build a Real Runner for Terminals
+## 1. Model Selector Cleanup (`ModelSelector.tsx`)
 
-### Current State
-The terminal currently routes all commands to the `run-command` edge function, which can only:
-- Handle shell builtins (echo, pwd, date, etc.)
-- Execute inline JS via `node -e` / `deno eval`
-- Execute simplified Python via `python -c`
-- Everything else returns "command requires a runner session" (exit 127)
+Replace the model list with genuine models only:
 
-### Architecture: Proxy Runner via Edge Function
+| Label | ID | Provider | Description |
+|---|---|---|---|
+| StartedAI | `started/started-ai` | Lovable (gemini-3-pro) | Token-efficient default |
+| Gemini 3 Flash | `google/gemini-3-flash-preview` | Lovable | Fast and capable |
+| Gemini 2.5 Pro | `google/gemini-2.5-pro` | Lovable | Heavy reasoning |
+| Gemini 3 Pro | `google/gemini-3-pro-preview` | Lovable | Next-gen |
+| GPT-5 | `openai/gpt-5` | Lovable | Powerful all-rounder |
+| GPT-5.2 | `openai/gpt-5.2` | Lovable | Latest OpenAI |
+| GPT-5 Mini | `openai/gpt-5-mini` | Lovable | Balanced |
+| Claude 4 Sonnet | `anthropic/claude-sonnet-4` | Anthropic Direct | Fast and smart |
+| Claude 4 Opus | `anthropic/claude-opus-4` | Anthropic Direct | Deep reasoning |
+| Claude 3.5 Haiku | `anthropic/claude-3-5-haiku-latest` | Anthropic Direct | Speed-optimized |
 
-Since we cannot run containers directly from the frontend, the approach is to make the `run-command` edge function a real execution engine using Deno's subprocess API (`Deno.Command`).
+Note: Claude model IDs use Anthropic's real API model names.
 
-**What changes**:
+---
 
-1. **`supabase/functions/run-command/index.ts`** -- Major rewrite:
-   - For commands that match known patterns (node, npm, npx, deno, python, pip, etc.), execute them using `Deno.Command` (Deno's subprocess API) inside the edge function
-   - Stream stdout/stderr back to the client via SSE in real-time
-   - Enforce timeout (kill after `timeout_s` seconds)
-   - Track CWD changes across commands in the same session
-   - Keep the denylist and permission checks intact
-   - Handle `npm install`, `npm test`, `npm start`, `npx`, `tsc`, etc. natively since Deno edge functions have access to `node`, `npm`, `npx` in their runtime
+## 2. Store the Anthropic API Key
 
-2. **Workspace file sync**:
-   - Before executing a command that needs project files (npm test, node src/main.ts, etc.), the edge function writes project files to a temp directory
-   - The frontend sends the current project files as part of the request body (only when needed, gated by command type)
-   - After execution, any modified/created files are read back and returned to the frontend
+We'll use the `add_secret` tool to store `ANTHROPIC_API_KEY` as an edge function secret. You'll paste your Enterprise API key when prompted.
 
-3. **`src/lib/api-client.ts`** -- Update `runCommandRemote`:
-   - Add optional `files` parameter to the request body for workspace sync
-   - Handle new response fields for file changes after execution
+---
 
-4. **`src/contexts/IDEContext.tsx`** -- Update `runCommand`:
-   - For commands that need project files (npm, node, python with file args, etc.), include `files` in the request
-   - After execution completes, if the response includes updated files, merge them into the IDE state
+## 3. StartedAI Custom Prompt (`started-prompt.ts`)
 
-5. **`src/components/ide/TerminalPanel.tsx`** -- Polish:
-   - Show runner status indicator (edge runner / sandbox)
-   - Show "Syncing files..." indicator when files are being uploaded
-   - Better streaming output rendering
+Create a dedicated `STARTED_AI_SYSTEM_PROMPT` that is:
+- Optimized for **minimal token output** (concise, no filler, max 3-bullet plans, compressed diffs)
+- Trained with Started.dev-specific personality and conventions
+- Only used when `started/started-ai` is selected
+- Other models get a standard, shorter system prompt
 
-### Supported Command Patterns (Real Execution)
+Key prompt directives for token efficiency:
+- "Respond in the fewest tokens possible"
+- "Omit pleasantries and filler"
+- "Plans: max 3 bullets"
+- "Patches only, no full file dumps"
+- "Notes: 1 sentence max"
+- "Never repeat the user's question back"
 
-| Pattern | Execution Method |
-|---------|-----------------|
-| `node file.js` | `Deno.Command("node", [...])` |
-| `npm install/test/start/run` | `Deno.Command("npm", [...])` |
-| `npx ...` | `Deno.Command("npx", [...])` |
-| `deno run file.ts` | `Deno.Command("deno", [...])` |
-| `python file.py` | `Deno.Command("python3", [...])` |
-| `pip install ...` | `Deno.Command("pip3", [...])` |
-| `tsc` | `Deno.Command("npx", ["tsc", ...])` |
-| Shell builtins | Handled inline (existing) |
-| Inline eval | Handled inline (existing) |
+---
 
-### Edge Function Runtime Capabilities
+## 4. Multi-Provider Router (`supabase/functions/started/index.ts`)
 
-Deno edge functions (Supabase) run on Deno Deploy which has limitations:
-- `Deno.Command` may not be available on all edge runtimes
-- If `Deno.Command` is unavailable, fall back to the current sandbox behavior but with a clear message
+The edge function gains a `routeToProvider` function:
 
-The implementation will feature-detect `Deno.Command` availability and gracefully degrade.
+```text
+function routeToProvider(model):
+  if model starts with "anthropic/":
+    -> Call https://api.anthropic.com/v1/messages
+    -> Use ANTHROPIC_API_KEY from env
+    -> Convert OpenAI-style messages to Anthropic format
+    -> Stream back, converting Anthropic SSE to OpenAI-compatible SSE
 
-### Security (Maintained)
+  if model == "started/started-ai":
+    -> Resolve to "google/gemini-3-pro-preview"
+    -> Inject STARTED_AI_SYSTEM_PROMPT (token-efficient)
+    -> Call Lovable gateway
 
-- Denylist patterns still enforced before any execution
-- Project permission rules still checked
-- Timeout enforcement via `AbortSignal` on subprocess
-- No access to host secrets (env vars are scoped)
-- Run audit logging to `runs` table preserved
+  else:
+    -> Passthrough to Lovable gateway as-is
+```
+
+Anthropic API format differences handled:
+- System prompt goes in `system` field (not in messages array)
+- Response format: `content_block_delta` events converted to OpenAI `delta.content`
+- Model IDs: strip `anthropic/` prefix for API call
+
+---
+
+## 5. Same changes for `agent-run/index.ts`
+
+Add the same multi-provider routing so agent mode also supports Claude and StartedAI.
+
+---
+
+## 6. Rate Limiting and Token Budgets (Profitability Engine)
+
+### Per-Model Token Multipliers
+
+Different models cost different amounts. We apply a **cost multiplier** to token usage tracking so expensive models consume quota faster:
+
+| Model | Multiplier | Rationale |
+|---|---|---|
+| StartedAI | 0.5x | Cheapest (Gemini 3 Pro + compact prompt = fewer tokens) |
+| Gemini 3 Flash | 1x | Baseline |
+| Gemini 2.5 Flash | 1x | Baseline |
+| GPT-5 Mini | 1.5x | Mid-tier |
+| Gemini 2.5 Pro | 2x | Premium |
+| Gemini 3 Pro | 2x | Premium |
+| GPT-5 | 3x | Expensive |
+| GPT-5.2 | 3.5x | Most expensive OpenAI |
+| Claude 3.5 Haiku | 2x | External API cost |
+| Claude 4 Sonnet | 4x | Premium external |
+| Claude 4 Opus | 6x | Most expensive overall |
+
+This means a Free user (100K token quota) can do:
+- ~200K effective tokens on StartedAI (0.5x)
+- ~100K on Gemini Flash (1x)
+- ~16.7K on Claude 4 Opus (6x)
+
+### Per-Request Rate Limits
+
+Add `requests_per_minute` limits per plan tier:
+
+| Plan | RPM (StartedAI) | RPM (Other) | RPM (Claude) |
+|---|---|---|---|
+| Free | 10 | 5 | 2 |
+| Builder | 30 | 20 | 10 |
+| Pro | 60 | 40 | 25 |
+| Studio | 120 | 80 | 50 |
+
+Implementation: Track request counts in a simple in-memory map keyed by `userId:minute`. Since edge functions are stateless, we'll use a lightweight DB check -- query `api_usage_ledger` or a new `rate_limit_log` approach.
+
+### Database Changes
+
+Add a `model_multipliers` column (jsonb) to `billing_plans`, or hardcode the multiplier table in the edge function (simpler, no migration needed). We'll hardcode it in the edge function for now.
+
+Update `increment_usage` RPC call to accept a multiplier parameter, so `estimatedTokens * multiplier` is what gets recorded.
+
+---
+
+## 7. Anthropic SSE Translation Layer
+
+The Lovable gateway returns OpenAI-compatible SSE. Anthropic returns a different format. The edge function will include a `streamAnthropicAsOpenAI` helper that:
+
+1. Reads Anthropic SSE events (`message_start`, `content_block_delta`, `message_stop`)
+2. Translates each `content_block_delta` to `{"choices":[{"delta":{"content":"..."}}]}`
+3. Sends `[DONE]` at the end
+
+This way the frontend `streamChat` in `api-client.ts` doesn't need any changes -- it already parses OpenAI-format SSE.
 
 ---
 
 ## Files to Create/Modify
 
 | File | Action | Purpose |
-|------|--------|---------|
-| `src/hooks/use-project-persistence.ts` | Modify | Add error reasons to createProject, add toast calls |
-| `src/contexts/IDEContext.tsx` | Modify | Add toast on project creation failure |
-| `src/components/ide/ProjectSwitcher.tsx` | Modify | Add loading state, error feedback |
-| `src/components/ide/TerminalPanel.tsx` | Modify | Add runner status indicator, polish output |
-| `src/components/ide/ModelSelector.tsx` | Modify | Add "(default)" badge to StartedAI |
-| `src/lib/api-client.ts` | Modify | Add files param to runCommandRemote |
-| `supabase/functions/run-command/index.ts` | Major rewrite | Real subprocess execution with Deno.Command |
+|---|---|---|
+| `src/components/ide/ModelSelector.tsx` | Modify | Real model IDs only, add provider badges |
+| `src/lib/started-prompt.ts` | Modify | Add token-efficient STARTED_AI_SYSTEM_PROMPT |
+| `supabase/functions/started/index.ts` | Major rewrite | Multi-provider router, Anthropic integration, rate limiting, cost multipliers |
+| `supabase/functions/agent-run/index.ts` | Modify | Same multi-provider routing |
+
+No frontend changes needed beyond the model selector -- the SSE translation ensures backward compatibility.
 
 ---
 
 ## Implementation Order
 
-1. Fix project creation bugs and add toasts (Phase 1) -- immediate impact
-2. UX polish (Phase 2) -- quick wins
-3. Build real runner (Phase 3) -- core feature, deploy and test incrementally
+1. Store `ANTHROPIC_API_KEY` secret
+2. Update `ModelSelector.tsx` with real model IDs
+3. Write token-efficient `STARTED_AI_SYSTEM_PROMPT`
+4. Rewrite `started/index.ts` with multi-provider router + rate limiting + cost multipliers
+5. Update `agent-run/index.ts` with same routing
+6. Deploy and test each model
+
