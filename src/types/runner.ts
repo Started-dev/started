@@ -1,6 +1,6 @@
 // ─── Runner Service Types ───
 
-export type RuntimeType = 'node' | 'python' | 'shell';
+export type RuntimeType = 'node' | 'python' | 'shell' | 'go' | 'rust' | 'c' | 'cpp' | 'php' | 'ruby' | 'java' | 'solidity' | 'dart' | 'swift' | 'kotlin' | 'r';
 
 export interface RunnerSession {
   id: string;
@@ -96,6 +96,78 @@ export const RUNTIME_TEMPLATES: RuntimeTemplate[] = [
     type: 'shell',
     label: 'Shell',
     defaultCommand: 'bash main.sh',
+    setupCommands: [],
+  },
+  {
+    type: 'go',
+    label: 'Go',
+    defaultCommand: 'go run main.go',
+    setupCommands: ['go mod tidy'],
+  },
+  {
+    type: 'rust',
+    label: 'Rust',
+    defaultCommand: 'cargo run',
+    setupCommands: ['cargo build'],
+  },
+  {
+    type: 'c',
+    label: 'C',
+    defaultCommand: 'gcc main.c -o main && ./main',
+    setupCommands: [],
+  },
+  {
+    type: 'cpp',
+    label: 'C++',
+    defaultCommand: 'g++ main.cpp -o main && ./main',
+    setupCommands: [],
+  },
+  {
+    type: 'php',
+    label: 'PHP',
+    defaultCommand: 'php index.php',
+    setupCommands: ['composer install'],
+  },
+  {
+    type: 'ruby',
+    label: 'Ruby',
+    defaultCommand: 'ruby main.rb',
+    setupCommands: ['bundle install'],
+  },
+  {
+    type: 'java',
+    label: 'Java',
+    defaultCommand: 'javac Main.java && java Main',
+    setupCommands: [],
+  },
+  {
+    type: 'solidity',
+    label: 'Solidity',
+    defaultCommand: 'solc --bin contract.sol',
+    setupCommands: ['npm install -g solc'],
+  },
+  {
+    type: 'dart',
+    label: 'Dart',
+    defaultCommand: 'dart run',
+    setupCommands: ['dart pub get'],
+  },
+  {
+    type: 'swift',
+    label: 'Swift',
+    defaultCommand: 'swift main.swift',
+    setupCommands: [],
+  },
+  {
+    type: 'kotlin',
+    label: 'Kotlin',
+    defaultCommand: 'kotlinc main.kt -include-runtime -d main.jar && java -jar main.jar',
+    setupCommands: [],
+  },
+  {
+    type: 'r',
+    label: 'R',
+    defaultCommand: 'Rscript main.R',
     setupCommands: [],
   },
 ];
