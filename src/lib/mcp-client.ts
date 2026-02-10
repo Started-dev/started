@@ -7,6 +7,9 @@ export interface MCPToolCallRequest {
   vercelToken?: string;
   supabaseToken?: string;
   cloudflareToken?: string;
+  awsAccessKeyId?: string;
+  awsSecretAccessKey?: string;
+  awsRegion?: string;
   serverId: string;
 }
 
@@ -16,7 +19,7 @@ export interface MCPToolCallResult {
   error?: string;
 }
 
-export async function callMCPTool({ tool, input, githubToken, vercelToken, supabaseToken, cloudflareToken, serverId }: MCPToolCallRequest): Promise<MCPToolCallResult> {
+export async function callMCPTool({ tool, input, githubToken, vercelToken, supabaseToken, cloudflareToken, awsAccessKeyId, awsSecretAccessKey, awsRegion, serverId }: MCPToolCallRequest): Promise<MCPToolCallResult> {
   const functionName = serverId;
   const body: Record<string, unknown> = { tool, input };
 
@@ -28,6 +31,10 @@ export async function callMCPTool({ tool, input, githubToken, vercelToken, supab
     body.supabase_token = supabaseToken;
   } else if (serverId === 'mcp-cloudflare') {
     body.cloudflare_token = cloudflareToken;
+  } else if (serverId === 'mcp-aws') {
+    body.aws_access_key_id = awsAccessKeyId;
+    body.aws_secret_access_key = awsSecretAccessKey;
+    body.aws_region = awsRegion || 'us-east-1';
   }
 
   const { data, error } = await supabase.functions.invoke(functionName, { body });

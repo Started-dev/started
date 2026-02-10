@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.mcp-cloudflare]
 verify_jwt = false
+
+[functions.mcp-aws]
+verify_jwt = false
