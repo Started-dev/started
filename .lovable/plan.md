@@ -1,61 +1,58 @@
 
 
-# Add Extended Runtime Support
+# Language Auto-Detection for Runtime Selection
 
 ## Overview
-Expand the runner service from 3 runtimes (Node.js, Python, Shell) to 15+ runtimes, covering Go, Rust, C, C++, PHP/Laravel, Dart/Flutter, Solidity, Ruby, Java, Swift, Kotlin, and more. This touches three layers: types, runner client templates, and the backend edge function.
+Add a utility that scans project files and automatically determines the correct runtime type, replacing the hardcoded `'node'` default. The IDE will re-detect whenever files change (create/delete/rename) and update the project runtime accordingly.
 
-## What Changes
+## Changes
 
-### 1. Runtime Type Definitions (`src/types/runner.ts`)
-- Expand the `RuntimeType` union from `'node' | 'python' | 'shell'` to include: `'go'`, `'rust'`, `'c'`, `'cpp'`, `'php'`, `'ruby'`, `'java'`, `'solidity'`, `'dart'`, `'swift'`, `'kotlin'`, `'r'`
-- Add corresponding `RUNTIME_TEMPLATES` entries with appropriate default commands and setup commands for each language
+### 1. Update Project type (`src/types/ide.ts`)
+- Expand `runtimeType` from `'node' | 'python' | 'shell'` to use the full `RuntimeType` union from `src/types/runner.ts` so all 15 runtimes are valid project types.
 
-### 2. Backend Command Handler (`supabase/functions/run-command/index.ts`)
-- Add inline eval handlers for each new language where possible (basic `go run`, `rustc`, `gcc`, `g++`, `php -r`, `ruby -e`, `javac`, `solc`, `dart`, `swiftc`, `kotlinc`, `Rscript -e`)
-- Since these run in a Deno edge function (serverless), full compilation isn't available -- but the function will:
-  - Recognize the commands and provide accurate informational messages
-  - Support inline eval syntax where feasible (e.g., `ruby -e "puts 'hello'"`, `php -r "echo 'hello';"`)
-  - Update the `which` command to report available runtimes
-  - Update the `packageManagers` and help text arrays to include `cargo`, `go`, `gem`, `composer`, `dart pub`, `pod`, `gradle`, `maven`, `mix`
+### 2. Create detection utility (`src/lib/detect-runtime.ts`)
+A new pure function `detectRuntime(files: IDEFile[]): RuntimeType` that checks file extensions and config files to determine the best runtime:
 
-### 3. Terminal UI (`src/components/ide/TerminalPanel.tsx`)
-- Update the placeholder text to mention the expanded set of runtimes
-- No structural changes needed -- the terminal already handles arbitrary commands
+Detection priority (first match wins):
+- `Cargo.toml` or `.rs` files --> `rust`
+- `go.mod` or `.go` files --> `go`
+- `pubspec.yaml` or `.dart` files --> `dart`
+- `Package.swift` or `.swift` files --> `swift`
+- `.kt` or `.kts` files --> `kotlin`
+- `composer.json` or `.php` files --> `php`
+- `Gemfile` or `.rb` files --> `ruby`
+- `.sol` files --> `solidity`
+- `.c` files (without `.cpp`/`.h` ambiguity) --> `c`
+- `.cpp` or `.cc` or `.cxx` files --> `cpp`
+- `.java` files --> `java`
+- `.R` or `.r` or `.Rmd` files --> `r`
+- `requirements.txt`, `setup.py`, `pyproject.toml`, or `.py` files --> `python`
+- `.sh` or `.bash` files (and no other language files) --> `shell`
+- Default fallback --> `node`
 
-### 4. Runner Client (`src/lib/runner-client.ts`)
-- No changes needed -- session management is runtime-agnostic
+### 3. Integrate into IDEContext (`src/contexts/IDEContext.tsx`)
+- Import and call `detectRuntime(files)` whenever files change (after initial load, file creation, file deletion, file rename)
+- Update `project.runtimeType` with the detected value
+- Show a toast notification when the runtime changes (e.g., "Runtime detected: Python")
 
----
+### 4. Extend language map in `createFile`
+- Expand the `langMap` in `IDEContext.createFile` to cover new extensions: `.go`, `.rs`, `.c`, `.cpp`, `.php`, `.rb`, `.java`, `.sol`, `.dart`, `.swift`, `.kt`, `.r`, `.sh`
 
 ## Technical Details
 
-### New Runtime Templates
+### Detection Function Signature
+```typescript
+import { RuntimeType } from '@/types/runner';
+import { IDEFile } from '@/types/ide';
 
-| Runtime   | Type       | Default Command         | Setup Commands                        |
-|-----------|------------|-------------------------|---------------------------------------|
-| Go        | `go`       | `go run main.go`        | `go mod tidy`                         |
-| Rust      | `rust`     | `cargo run`             | `cargo build`                         |
-| C         | `c`        | `gcc main.c -o main && ./main` | (none)                         |
-| C++       | `cpp`      | `g++ main.cpp -o main && ./main` | (none)                       |
-| PHP       | `php`      | `php index.php`         | `composer install`                    |
-| Ruby      | `ruby`     | `ruby main.rb`          | `bundle install`                      |
-| Java      | `java`     | `javac Main.java && java Main` | (none)                          |
-| Solidity  | `solidity` | `solc --bin contract.sol`| `npm install -g solc`                |
-| Dart      | `dart`     | `dart run`              | `dart pub get`                        |
-| Swift     | `swift`    | `swift main.swift`      | (none)                                |
-| Kotlin    | `kotlin`   | `kotlinc main.kt -include-runtime -d main.jar && java -jar main.jar` | (none) |
-| R         | `r`        | `Rscript main.R`        | (none)                                |
-
-### Edge Function Changes
-The `run-command` edge function will be extended with:
-- New eval matchers for `ruby -e`, `php -r`, and `Rscript -e` (basic expression evaluation similar to existing `python -c` support)
-- Expanded `which` command awareness for all new runtimes
-- Updated help text listing all supported runtimes
-- Updated package manager and build tool recognition arrays
+export function detectRuntime(files: IDEFile[]): RuntimeType;
+```
 
 ### Files Modified
-1. **`src/types/runner.ts`** -- Expand `RuntimeType` union and `RUNTIME_TEMPLATES` array
-2. **`supabase/functions/run-command/index.ts`** -- Add eval handlers, update help text and command recognition
-3. **`src/components/ide/TerminalPanel.tsx`** -- Update placeholder text
+1. `src/types/ide.ts` -- Use `RuntimeType` import for `Project.runtimeType`
+2. `src/lib/detect-runtime.ts` -- New file with detection logic
+3. `src/contexts/IDEContext.tsx` -- Call detector on file changes, update project state
+
+### No Backend Changes Required
+This is purely frontend logic operating on the in-memory file tree.
 
