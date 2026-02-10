@@ -9,6 +9,8 @@ export const AVAILABLE_MODELS = [
   { id: 'openai/gpt-5', label: 'GPT-5', desc: 'Powerful all-rounder' },
   { id: 'openai/gpt-5-mini', label: 'GPT-5 Mini', desc: 'Balanced' },
   { id: 'anthropic/claude-4-opus', label: 'Claude 4 Opus', desc: 'Deep reasoning' },
+  { id: 'anthropic/claude-4.5-opus', label: 'Claude 4.5 Opus', desc: 'Advanced reasoning' },
+  { id: 'anthropic/claude-4.6-opus', label: 'Claude 4.6 Opus', desc: 'Latest & strongest' },
   { id: 'anthropic/claude-4-sonnet', label: 'Claude 4 Sonnet', desc: 'Fast & smart' },
   { id: 'anthropic/claude-3.5-haiku', label: 'Claude 3.5 Haiku', desc: 'Speed-optimized' },
 ] as const;
