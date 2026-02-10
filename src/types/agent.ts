@@ -119,9 +119,15 @@ export const BUILTIN_MCP_SERVERS: MCPServer[] = [
     requiresAuth: true,
     authConfigured: false,
     tools: [
-      { name: 'vercel_deploy', description: 'Deploy project', inputSchema: {} },
-      { name: 'vercel_list_projects', description: 'List projects', inputSchema: {} },
-      { name: 'vercel_get_deployments', description: 'Get deployments', inputSchema: {} },
+      { name: 'vercel_list_projects', description: 'List your Vercel projects', inputSchema: { limit: { type: 'number' } } },
+      { name: 'vercel_get_project', description: 'Get project details', inputSchema: { projectId: { type: 'string' } } },
+      { name: 'vercel_list_deployments', description: 'List deployments', inputSchema: { projectId: { type: 'string' }, limit: { type: 'number' } } },
+      { name: 'vercel_get_deployment', description: 'Get deployment details', inputSchema: { deploymentId: { type: 'string' } } },
+      { name: 'vercel_create_deployment', description: 'Create a deployment', inputSchema: { name: { type: 'string' }, target: { type: 'string' } } },
+      { name: 'vercel_list_domains', description: 'List project domains', inputSchema: { projectId: { type: 'string' } } },
+      { name: 'vercel_add_domain', description: 'Add domain to project', inputSchema: { projectId: { type: 'string' }, domain: { type: 'string' } } },
+      { name: 'vercel_list_env_vars', description: 'List environment variables', inputSchema: { projectId: { type: 'string' } } },
+      { name: 'vercel_create_env_var', description: 'Create environment variable', inputSchema: { projectId: { type: 'string' }, key: { type: 'string' }, value: { type: 'string' } } },
     ],
   },
 ];

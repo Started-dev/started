@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.mcp-github]
 verify_jwt = false
+
+[functions.mcp-vercel]
+verify_jwt = false
