@@ -1,188 +1,159 @@
 
 
-# Advanced Hooks System + Webhook Infrastructure
+# Advanced AI System + MCP-Augmented Chat + OpenClaw Deploy Interface
 
-## Current State
+## Important Clarification: Ollama + Claude Code
 
-The hooks system today is **local-only and agent-scoped**: hooks live in React state (`useState`), are never persisted, and only gate tool calls (PreToolUse / PostToolUse) with simple glob matching. There is no concept of project-level webhooks, external HTTP endpoints, or hook execution logging.
+Ollama is a tool for running AI models locally on physical hardware. It cannot be integrated into this project because:
+- Started runs on Lovable Cloud (edge functions in the cloud), which cannot host local GPU processes
+- "Free tokens" via Ollama still costs GPU hardware/electricity -- it shifts cost, doesn't eliminate it
+- Claude Code is a CLI tool, not an API you can embed
+
+**What we CAN do**: The project already has Lovable AI Gateway access (Gemini 3 Flash, Gemini 2.5 Pro, GPT-5, etc.) at no API key cost to users. We'll add **model selection** so users can pick the best model for their task, and enhance the AI pipeline to be significantly more powerful.
+
+---
 
 ## What We'll Build
 
-### 1. Persist Hooks to Database
+### 1. Model Selector in Chat
 
-Create a `project_hooks` table so hooks survive page reloads and are scoped per project.
+Add a dropdown in the chat input area letting users pick from available models:
+- google/gemini-3-flash-preview (default, fast)
+- google/gemini-2.5-pro (heavy reasoning)
+- google/gemini-3-pro-preview (next-gen)
+- openai/gpt-5 (powerful all-rounder)
+- openai/gpt-5-mini (balanced)
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID PK | auto-generated |
-| project_id | UUID FK | references projects(id) ON DELETE CASCADE |
-| event | text | PreToolUse, PostToolUse, **Webhook** (new) |
-| tool_pattern | text | glob pattern or `*` |
-| command_pattern | text | optional regex |
-| action | text | allow, deny, log, transform, **webhook** (new) |
-| webhook_url | text | optional -- destination URL for webhook action |
-| label | text | human-readable name |
-| enabled | boolean | default true |
-| created_at | timestamptz | default now() |
+The selected model is sent to the `started` edge function and forwarded to the gateway.
 
-RLS: only project members can CRUD their project's hooks.
+### 2. MCP-Augmented AI Chat and Agent
 
-### 2. New Hook Events and Actions
+**The big gap today**: MCP connections exist (GitHub, Slack, Notion, etc.) but the AI chat and agent never use them. We'll wire enabled MCP servers into the AI context pipeline.
 
-Expand beyond agent-only hooks:
+Changes:
+- **`sendMessage` in IDEContext**: Before calling `streamChat`, gather enabled MCP servers and their available tools, inject a tools manifest into the system prompt context so the AI knows what tools are available
+- **`started` edge function**: Accept an optional `mcp_tools` field; append a "Available MCP Tools" section to the system prompt listing tool names and descriptions
+- **`agent-run` edge function**: Same treatment -- inject MCP tool availability into the agent's system prompt so it can request MCP tool calls as actions
+- **New action type in agent**: `mcp_call` -- when the agent wants to use an MCP tool, the client intercepts it, calls `callMCPTool`, and feeds the result back
 
-**New Events:**
-- `Webhook` -- an inbound HTTP hook that external services can call into your project
-- `OnDeploy` -- fires after a deployment completes
-- `OnFileChange` -- fires when specific file patterns are modified
-- `OnError` -- fires when a terminal command fails
+### 3. Richer Chat Input (Attachments, Web Search, URL Fetch)
 
-**New Actions:**
-- `webhook` -- forward the event payload to an external URL (outbound webhook)
-- `notify` -- send an in-IDE toast or collab message
+Expand the chat input area with new context chip types:
+- **@url** -- paste a URL, fetch its content via Firecrawl/Perplexity MCP, inject as context
+- **@web** -- trigger a web search query via Perplexity, inject results as context
+- **@image** -- attach an image (base64 encode for multimodal models like Gemini)
 
-### 3. Webhook Endpoints (Inbound)
+New chips in ChatPanel:
+- `@url` button (enabled when Firecrawl is connected)
+- `@web` button (enabled when Perplexity is connected)
+- `@image` button (file picker, converts to base64)
 
-Create a new edge function `project-webhooks` that:
-- Accepts POST requests with a project-scoped secret token
-- Looks up enabled hooks with `event = 'Webhook'` for the project
-- Executes matching hook actions (log to `hook_execution_log`, forward to outbound URLs, etc.)
-- Returns a structured response
+### 4. Verify File Explorer Integration
 
-URL pattern: `POST /project-webhooks?project_id=<id>&token=<secret>`
+The current code ALREADY pushes AI-generated files to the Explorer via:
+- `autoApplyParsedPatches()` -- applies unified diffs, creates folders, persists to DB
+- `autoCreateFileBlocks()` -- creates files from ```lang filepath blocks
 
-### 4. Webhook Execution Log
+However, there's a gap: the **agent's `onPatch`** callback applies patches but doesn't always open created files in the explorer visibly. We'll ensure:
+- New files from agent patches are opened in tabs and highlighted in the file tree
+- A toast notification shows "Created: /path/to/file.ts" for each new file
+- The agent's `onRunCommand` results are also checked for file creation patterns
 
-Create a `hook_execution_log` table for full observability:
+### 5. OpenClaw Deployable Interface
 
-| Column | Type |
-|--------|------|
-| id | UUID PK |
-| hook_id | UUID FK |
-| project_id | UUID FK |
-| event | text |
-| input_payload | jsonb |
-| output_payload | jsonb |
-| status | text (success/failed) |
-| duration_ms | integer |
-| created_at | timestamptz |
-
-### 5. Webhook Management UI
-
-Expand the existing `HooksConfig` modal into a tabbed panel:
-
-- **Agent Hooks** tab -- existing PreToolUse / PostToolUse hooks (unchanged UX)
-- **Webhooks** tab -- create/manage inbound webhook endpoints and outbound webhook actions
-  - Generate webhook URL + secret token per project
-  - Copy-to-clipboard for the endpoint URL
-  - Test button that sends a sample payload
-  - Execution log viewer showing recent invocations with status, timing, and payloads
-- **Event Hooks** tab -- OnDeploy, OnFileChange, OnError hooks with webhook or notify actions
-
-### 6. Wire Hooks to IDEContext
-
-- Load hooks from DB on project load (replace `useState(DEFAULT_HOOKS)`)
-- CRUD operations write to DB instead of local state
-- `evaluateHooks` continues to work the same way for agent tool calls
-- New `executeHookAction` function handles webhook/notify actions
+Create a new panel `OpenClawPanel.tsx` accessible from the toolbar that provides:
+- **Connection Setup**: Configure OpenClaw instance URL + API key
+- **Status Dashboard**: Show OpenClaw status, installed skills, active tasks
+- **Deploy from Started**: One-click deployment of project files to an OpenClaw instance
+  - Package project files and push via OpenClaw API
+  - Show deployment progress and logs
+- **Task Management**: View/cancel/create OpenClaw autonomous tasks from within Started
+- **Skill Management**: Install/uninstall OpenClaw skills
 
 ---
 
 ## Technical Details
 
-### Database Migration
-
-```sql
--- Persistent hooks table
-CREATE TABLE public.project_hooks (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
-  event TEXT NOT NULL DEFAULT 'PreToolUse',
-  tool_pattern TEXT NOT NULL DEFAULT '*',
-  command_pattern TEXT,
-  action TEXT NOT NULL DEFAULT 'deny',
-  webhook_url TEXT,
-  label TEXT NOT NULL,
-  enabled BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-ALTER TABLE public.project_hooks ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Members can read project hooks"
-  ON public.project_hooks FOR SELECT
-  USING (public.is_project_member(auth.uid(), project_id));
-
-CREATE POLICY "Members can insert project hooks"
-  ON public.project_hooks FOR INSERT
-  WITH CHECK (public.is_project_member(auth.uid(), project_id));
-
-CREATE POLICY "Members can update project hooks"
-  ON public.project_hooks FOR UPDATE
-  USING (public.is_project_member(auth.uid(), project_id));
-
-CREATE POLICY "Members can delete project hooks"
-  ON public.project_hooks FOR DELETE
-  USING (public.is_project_member(auth.uid(), project_id));
-
--- Webhook secrets per project
-CREATE TABLE public.project_webhook_secrets (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
-  token TEXT NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'),
-  label TEXT NOT NULL DEFAULT 'default',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(project_id, label)
-);
-
-ALTER TABLE public.project_webhook_secrets ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Members can manage webhook secrets"
-  ON public.project_webhook_secrets FOR ALL
-  USING (public.is_project_member(auth.uid(), project_id));
-
--- Execution log
-CREATE TABLE public.hook_execution_log (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  hook_id UUID REFERENCES public.project_hooks(id) ON DELETE SET NULL,
-  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
-  event TEXT NOT NULL,
-  input_payload JSONB DEFAULT '{}',
-  output_payload JSONB DEFAULT '{}',
-  status TEXT NOT NULL DEFAULT 'success',
-  duration_ms INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-ALTER TABLE public.hook_execution_log ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Members can read execution logs"
-  ON public.hook_execution_log FOR SELECT
-  USING (public.is_project_member(auth.uid(), project_id));
-
--- Auto-seed default hooks for new projects (optional trigger)
-```
-
-### Edge Function: `project-webhooks`
-
-A new edge function that serves as the inbound webhook receiver:
-
-- Validates project_id + token against `project_webhook_secrets`
-- Queries enabled hooks with `event = 'Webhook'` for the project
-- For each matching hook, executes the action (forward to `webhook_url`, log, etc.)
-- Writes results to `hook_execution_log`
-- Returns `{ ok: true, hooks_triggered: N }`
-
 ### Files Changed
 
-- **New migration** -- creates `project_hooks`, `project_webhook_secrets`, `hook_execution_log` tables
-- **`src/types/agent.ts`** -- expand `HookEvent` and `HookAction` types, add `WebhookSecret` and `HookExecution` interfaces
-- **`src/components/ide/HooksConfig.tsx`** -- refactor into tabbed UI (Agent Hooks / Webhooks / Event Hooks), add webhook URL generation, test button, execution log viewer
-- **`src/contexts/IDEContext.tsx`** -- load hooks from DB, CRUD via Supabase, seed defaults on first load
-- **`supabase/functions/project-webhooks/index.ts`** -- new inbound webhook endpoint
-- **`supabase/config.toml`** -- add `[functions.project-webhooks]` with `verify_jwt = false` (token-authenticated)
+**Edge Functions:**
+- `supabase/functions/started/index.ts` -- Accept `model` and `mcp_tools` params; use selected model; inject MCP context into system prompt
+- `supabase/functions/agent-run/index.ts` -- Accept `mcp_tools` param; add `mcp_call` action type; inject MCP tool manifest into agent system prompt
+
+**Frontend - AI Pipeline:**
+- `src/lib/api-client.ts` -- Add `model` param to `streamChat` and `streamAgent` options; add `mcpTools` param
+- `src/contexts/IDEContext.tsx`:
+  - `sendMessage`: Gather enabled MCP servers' tools, pass to API; add model selection state
+  - `startAgent`: Same MCP tool injection; handle new `mcp_call` action type from agent stream
+  - Add `selectedModel` / `setSelectedModel` to context
+  - Add toast notifications when agent creates new files
+  - Add `fetchUrlContent` and `webSearch` helpers that use MCP tools
+
+**Frontend - Chat UI:**
+- `src/components/ide/ChatPanel.tsx`:
+  - Add model selector dropdown above input
+  - Add @url, @web, @image chip buttons
+  - Add image file picker dialog
+  - Show MCP tool usage inline in chat
+
+**Frontend - New Components:**
+- `src/components/ide/OpenClawPanel.tsx` -- Full OpenClaw management panel with tabs for Status, Deploy, Tasks, Skills
+- `src/components/ide/ModelSelector.tsx` -- Reusable model picker dropdown
+
+**Types:**
+- `src/types/ide.ts` -- Add 'url', 'web', 'image' to ContextChip type union
+- `src/types/agent.ts` -- Add 'mcp_call' to AgentStepType
+
+**IDE Layout:**
+- `src/components/ide/IDELayout.tsx` -- Add OpenClaw button to toolbar (Claw/Terminal icon)
+
+### MCP Integration Flow
+
+```text
+User sends message
+      |
+      v
+Gather enabled MCP servers + their tool lists
+      |
+      v
+Inject "Available Tools" manifest into context
+      |
+      v
+AI sees available tools, can reference them in response
+      |
+      v
+(Agent mode) AI returns { action: "mcp_call", tool: "github_create_issue", input: {...} }
+      |
+      v
+Client calls callMCPTool() with stored tokens
+      |
+      v
+Result fed back to agent conversation history
+      |
+      v
+Agent continues loop with MCP result context
+```
+
+### Model Selection Flow
+
+- Default: `google/gemini-3-flash-preview`
+- State stored in IDEContext as `selectedModel`
+- Passed through `streamChat({ model })` to edge function
+- Edge function forwards to gateway with selected model
+
+### OpenClaw Deploy Flow
+
+1. User opens OpenClaw panel, configures instance URL + API key (stored in sessionStorage)
+2. Clicks "Deploy Project"
+3. Frontend packages all project files as JSON
+4. Calls `mcp-openclaw` edge function with a new `openclaw_deploy` tool
+5. OpenClaw receives files and deploys them
+6. Progress/status shown in the panel
 
 ### No Breaking Changes
 
-Existing default hooks (Block rm -rf, Log all patches, Block sudo) will be seeded into the DB on first project load via upsert. The `evaluateHooks` function signature stays the same.
+- Model defaults to current `gemini-3-flash-preview` if not specified
+- MCP tools are only injected if servers are enabled and have tokens configured
+- All new chat chips are optional additions
+- OpenClaw panel is a new opt-in feature
 
