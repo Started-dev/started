@@ -191,7 +191,7 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   const [permissionPolicy, setPermissionPolicy] = useState<PermissionPolicy>(DEFAULT_PERMISSION_POLICY);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [pendingPermission, setPendingPermission] = useState<(PermissionRequest & { runId: string }) | null>(null);
-  const [selectedModel, setSelectedModel] = useState<ModelId>('google/gemini-3-flash-preview');
+  const [selectedModel, setSelectedModel] = useState<ModelId>('started/started-ai');
 
   // Agent state
   const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
