@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
   ArrowLeft, User, CreditCard, Settings, Shield, Loader2,
-  Zap, Clock, MessageSquare, HardDrive, Check, Crown,
+  Zap, Clock, MessageSquare, HardDrive, Check, Crown, ExternalLink,
 } from 'lucide-react';
 
 type TabId = 'settings' | 'billing';
@@ -101,6 +101,25 @@ export default function UserSettings() {
     }
   };
 
+  const handleManageSubscription = async () => {
+    setCheckoutLoading('portal');
+    try {
+      const { data, error } = await supabase.functions.invoke('stripe-checkout', {
+        body: { action: 'create_portal' },
+      });
+      if (error) throw error;
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error(data?.error || 'Failed to open subscription portal');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Could not open portal');
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
   const currentPlanKey = usage?.plan_key ?? 'free';
   const currentPlan = plans.find(p => p.key === currentPlanKey);
 
@@ -161,6 +180,7 @@ export default function UserSettings() {
               currentPlan={currentPlan ?? null}
               currentPlanKey={currentPlanKey}
               onUpgrade={handleUpgrade}
+              onManageSubscription={handleManageSubscription}
               checkoutLoading={checkoutLoading}
             />
           )}
@@ -224,6 +244,7 @@ function BillingTab({
   currentPlan,
   currentPlanKey,
   onUpgrade,
+  onManageSubscription,
   checkoutLoading,
 }: {
   plans: BillingPlan[];
@@ -231,6 +252,7 @@ function BillingTab({
   currentPlan: BillingPlan | null;
   currentPlanKey: string;
   onUpgrade: (planKey: string) => void;
+  onManageSubscription: () => void;
   checkoutLoading: string | null;
 }) {
   const usageMeters = currentPlan ? [
@@ -291,7 +313,25 @@ function BillingTab({
               </p>
             </div>
           </div>
-          <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">Active</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">Active</span>
+            {currentPlan.monthly_price_usd > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs gap-1.5"
+                disabled={checkoutLoading === 'portal'}
+                onClick={onManageSubscription}
+              >
+                {checkoutLoading === 'portal' ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <ExternalLink className="h-3 w-3" />
+                )}
+                Manage Subscription
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
