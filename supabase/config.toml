@@ -140,3 +140,6 @@ verify_jwt = false
 
 [functions.stripe-checkout]
 verify_jwt = false
+
+[functions.project-webhooks]
+verify_jwt = false

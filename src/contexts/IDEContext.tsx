@@ -3,7 +3,8 @@ import { IDEFile, OpenTab, ChatMessage, RunResult, Project, ContextChip, Convers
 import { ToolCall, ToolName, PatchPreview, ParsedPatch, PermissionPolicy, DEFAULT_PERMISSION_POLICY } from '@/types/tools';
 import { supabase } from '@/integrations/supabase/client';
 import { RunnerSession, RuntimeType } from '@/types/runner';
-import { AgentRun, AgentStep, Hook, DEFAULT_HOOKS, MCPServer, BUILTIN_MCP_SERVERS } from '@/types/agent';
+import { AgentRun, AgentStep, Hook, DEFAULT_HOOKS, MCPServer, BUILTIN_MCP_SERVERS, WebhookSecret, HookExecution } from '@/types/agent';
+import { useProjectHooks } from '@/hooks/use-project-hooks';
 import { STARTED_SYSTEM_PROMPT } from '@/lib/started-prompt';
 import { evaluatePermission, executeToolLocally } from '@/lib/tool-executor';
 import { getRunnerClient, IRunnerClient } from '@/lib/runner-client';
@@ -107,6 +108,11 @@ interface IDEContextType {
   toggleHook: (id: string) => void;
   addHook: (hook: Omit<Hook, 'id'>) => void;
   removeHook: (id: string) => void;
+  webhookSecrets: WebhookSecret[];
+  hookExecutions: HookExecution[];
+  generateWebhookSecret: (label: string) => Promise<WebhookSecret | null>;
+  deleteWebhookSecret: (id: string) => void;
+  refreshHookExecutions: () => void;
   mcpServers: MCPServer[];
   toggleMCPServer: (id: string) => void;
   activeRightPanel: 'chat' | 'agent';
@@ -312,8 +318,8 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
     }
   }, [projectId, activeConversationId, convPersistence, makeNewConversation, mergedConversations]);
 
-  // Hooks state
-  const [hooks, setHooks] = useState<Hook[]>(DEFAULT_HOOKS);
+  // Hooks state (DB-backed)
+  const projectHooks = useProjectHooks(projectId);
   const [mcpServers, setMcpServers] = useState<MCPServer[]>(BUILTIN_MCP_SERVERS);
   const [activeRightPanel, setActiveRightPanel] = useState<'chat' | 'agent'>('chat');
 
@@ -969,19 +975,9 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
     setAgentRun(prev => prev ? { ...prev, status: 'paused' } : null);
   }, []);
 
-  // ─── Hooks ───
+  // ─── Hooks (delegated to useProjectHooks) ───
 
-  const toggleHook = useCallback((id: string) => {
-    setHooks(prev => prev.map(h => h.id === id ? { ...h, enabled: !h.enabled } : h));
-  }, []);
-
-  const addHook = useCallback((hook: Omit<Hook, 'id'>) => {
-    setHooks(prev => [...prev, { ...hook, id: `hook-${Date.now()}` }]);
-  }, []);
-
-  const removeHook = useCallback((id: string) => {
-    setHooks(prev => prev.filter(h => h.id !== id));
-  }, []);
+  const { hooks, toggleHook, addHook, removeHook, webhookSecrets, executions: hookExecutions, generateSecret: generateWebhookSecret, deleteSecret: deleteWebhookSecret, loadExecutions: refreshHookExecutions } = projectHooks;
 
   const toggleMCPServer = useCallback((id: string) => {
     setMcpServers(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
@@ -1088,6 +1084,7 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
       theme, toggleTheme,
       agentRun, startAgent, stopAgent, pauseAgent, clearAgentRun: () => setAgentRun(null),
       hooks, toggleHook, addHook, removeHook,
+      webhookSecrets, hookExecutions, generateWebhookSecret, deleteWebhookSecret, refreshHookExecutions,
       mcpServers, toggleMCPServer,
       activeRightPanel, setActiveRightPanel,
       snapshots, snapshotsLoading, loadSnapshots, createSnapshot, restoreSnapshot,

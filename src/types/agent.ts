@@ -35,9 +35,9 @@ export interface AgentRun {
 
 // ─── Hooks System ───
 
-export type HookEvent = 'PreToolUse' | 'PostToolUse';
+export type HookEvent = 'PreToolUse' | 'PostToolUse' | 'Webhook' | 'OnDeploy' | 'OnFileChange' | 'OnError';
 
-export type HookAction = 'allow' | 'deny' | 'log' | 'transform';
+export type HookAction = 'allow' | 'deny' | 'log' | 'transform' | 'webhook' | 'notify';
 
 export interface Hook {
   id: string;
@@ -47,6 +47,28 @@ export interface Hook {
   action: HookAction;
   label: string;
   enabled: boolean;
+  webhookUrl?: string; // destination URL for webhook action
+  projectId?: string; // DB-persisted hooks have a project_id
+}
+
+export interface WebhookSecret {
+  id: string;
+  projectId: string;
+  token: string;
+  label: string;
+  createdAt: Date;
+}
+
+export interface HookExecution {
+  id: string;
+  hookId: string | null;
+  projectId: string;
+  event: string;
+  inputPayload: Record<string, unknown>;
+  outputPayload: Record<string, unknown>;
+  status: 'success' | 'failed';
+  durationMs: number;
+  createdAt: Date;
 }
 
 export const DEFAULT_HOOKS: Hook[] = [
