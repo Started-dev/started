@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.mcp-supabase]
 verify_jwt = false
+
+[functions.mcp-cloudflare]
+verify_jwt = false

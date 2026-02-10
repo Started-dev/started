@@ -6,6 +6,7 @@ export interface MCPToolCallRequest {
   githubToken?: string;
   vercelToken?: string;
   supabaseToken?: string;
+  cloudflareToken?: string;
   serverId: string;
 }
 
@@ -15,7 +16,7 @@ export interface MCPToolCallResult {
   error?: string;
 }
 
-export async function callMCPTool({ tool, input, githubToken, vercelToken, supabaseToken, serverId }: MCPToolCallRequest): Promise<MCPToolCallResult> {
+export async function callMCPTool({ tool, input, githubToken, vercelToken, supabaseToken, cloudflareToken, serverId }: MCPToolCallRequest): Promise<MCPToolCallResult> {
   const functionName = serverId;
   const body: Record<string, unknown> = { tool, input };
 
@@ -25,6 +26,8 @@ export async function callMCPTool({ tool, input, githubToken, vercelToken, supab
     body.vercel_token = vercelToken;
   } else if (serverId === 'mcp-supabase') {
     body.supabase_token = supabaseToken;
+  } else if (serverId === 'mcp-cloudflare') {
+    body.cloudflare_token = cloudflareToken;
   }
 
   const { data, error } = await supabase.functions.invoke(functionName, { body });
