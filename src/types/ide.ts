@@ -50,9 +50,11 @@ export interface Conversation {
   projectId: string;
 }
 
+import type { RuntimeType } from './runner';
+
 export interface Project {
   id: string;
   name: string;
-  runtimeType: 'node' | 'python' | 'shell';
+  runtimeType: RuntimeType;
   files: IDEFile[];
 }
