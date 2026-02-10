@@ -11,7 +11,7 @@ interface MCPConfigProps {
   onClose: () => void;
 }
 
-const TOKEN_CONFIG: Record<string, { storageKey: string; label: string; placeholder: string; generateUrl: string; generateLabel: string }> = {
+const TOKEN_CONFIG: Record<string, { storageKey: string; label: string; placeholder: string; generateUrl: string; generateLabel: string; secondaryKey?: string; secondaryLabel?: string; secondaryPlaceholder?: string; regionKey?: string }> = {
   'mcp-github': {
     storageKey: 'github_pat',
     label: 'GitHub Personal Access Token',
@@ -40,6 +40,17 @@ const TOKEN_CONFIG: Record<string, { storageKey: string; label: string; placehol
     generateUrl: 'https://dash.cloudflare.com/profile/api-tokens',
     generateLabel: 'Create a token on Cloudflare',
   },
+  'mcp-aws': {
+    storageKey: 'aws_access_key_id',
+    label: 'AWS Access Key ID',
+    placeholder: 'AKIAIOSFODNN7EXAMPLE',
+    generateUrl: 'https://console.aws.amazon.com/iam/home#/security_credentials',
+    generateLabel: 'Create access keys in AWS Console',
+    secondaryKey: 'aws_secret_access_key',
+    secondaryLabel: 'AWS Secret Access Key',
+    secondaryPlaceholder: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+    regionKey: 'aws_region',
+  },
 };
 
 export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) {
@@ -52,6 +63,9 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
   const hasToken = (serverId: string) => {
     const cfg = TOKEN_CONFIG[serverId];
     if (!cfg) return false;
+    if (cfg.secondaryKey) {
+      return (savedFlags[serverId] || !!sessionStorage.getItem(cfg.storageKey)) && !!sessionStorage.getItem(cfg.secondaryKey);
+    }
     return savedFlags[serverId] || !!sessionStorage.getItem(cfg.storageKey);
   };
 
@@ -60,6 +74,14 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
     const val = tokenInputs[serverId]?.trim();
     if (!cfg || !val) return;
     sessionStorage.setItem(cfg.storageKey, val);
+    if (cfg.secondaryKey) {
+      const secondaryVal = tokenInputs[`${serverId}_secondary`]?.trim();
+      if (secondaryVal) sessionStorage.setItem(cfg.secondaryKey, secondaryVal);
+    }
+    if (cfg.regionKey) {
+      const regionVal = tokenInputs[`${serverId}_region`]?.trim();
+      if (regionVal) sessionStorage.setItem(cfg.regionKey, regionVal);
+    }
     setSavedFlags(p => ({ ...p, [serverId]: true }));
     const server = servers.find(s => s.id === serverId);
     if (server && !server.enabled) onToggleServer(serverId);
@@ -89,6 +111,9 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
         vercelToken: serverId === 'mcp-vercel' ? token : undefined,
         supabaseToken: serverId === 'mcp-supabase' ? token : undefined,
         cloudflareToken: serverId === 'mcp-cloudflare' ? token : undefined,
+        awsAccessKeyId: serverId === 'mcp-aws' ? token : undefined,
+        awsSecretAccessKey: serverId === 'mcp-aws' ? (sessionStorage.getItem('aws_secret_access_key') || tokenInputs[`${serverId}_secondary`]) : undefined,
+        awsRegion: serverId === 'mcp-aws' ? (sessionStorage.getItem('aws_region') || 'us-east-1') : undefined,
       });
       if (result.ok) {
         const r = result.result as Record<string, unknown>;
@@ -182,15 +207,55 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
                             onChange={e => setTokenInputs(p => ({ ...p, [server.id]: e.target.value }))}
                             className="h-7 text-xs bg-background font-mono"
                           />
+                          {!cfg.secondaryKey && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleSaveToken(server.id)}
+                              disabled={!tokenInputs[server.id]?.trim()}
+                              className="h-7 text-xs px-2.5"
+                            >
+                              Save
+                            </Button>
+                          )}
+                        </div>
+                        {cfg.secondaryKey && cfg.secondaryLabel && (
+                          <>
+                            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                              {cfg.secondaryLabel}
+                            </label>
+                            <Input
+                              type="password"
+                              placeholder={serverHasToken ? '••••••••••••' : cfg.secondaryPlaceholder}
+                              value={tokenInputs[`${server.id}_secondary`] || ''}
+                              onChange={e => setTokenInputs(p => ({ ...p, [`${server.id}_secondary`]: e.target.value }))}
+                              className="h-7 text-xs bg-background font-mono"
+                            />
+                          </>
+                        )}
+                        {cfg.regionKey && (
+                          <>
+                            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                              Region
+                            </label>
+                            <Input
+                              type="text"
+                              placeholder="us-east-1"
+                              value={tokenInputs[`${server.id}_region`] || ''}
+                              onChange={e => setTokenInputs(p => ({ ...p, [`${server.id}_region`]: e.target.value }))}
+                              className="h-7 text-xs bg-background font-mono"
+                            />
+                          </>
+                        )}
+                        {cfg.secondaryKey && (
                           <Button
                             size="sm"
                             onClick={() => handleSaveToken(server.id)}
-                            disabled={!tokenInputs[server.id]?.trim()}
-                            className="h-7 text-xs px-2.5"
+                            disabled={!tokenInputs[server.id]?.trim() || !tokenInputs[`${server.id}_secondary`]?.trim()}
+                            className="h-7 text-xs px-2.5 w-full"
                           >
-                            Save
+                            Save Credentials
                           </Button>
-                        </div>
+                        )}
                         <a
                           href={cfg.generateUrl}
                           target="_blank"
