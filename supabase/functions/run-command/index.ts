@@ -48,7 +48,7 @@ function executeBuiltin(cmd: string, cwd: string): { handled: boolean; stdout?: 
     case "which": {
       const target = parts[1];
       if (!target) return { handled: true, stderr: "which: missing argument\n", exitCode: 1 };
-      const available = ["node", "deno", "npx", "npm", "echo", "pwd", "date", "cat", "ls", "env", "which", "whoami", "hostname", "uname", "true", "false", "sleep", "printf", "test", "expr"];
+      const available = ["node", "deno", "npx", "npm", "echo", "pwd", "date", "cat", "ls", "env", "which", "whoami", "hostname", "uname", "true", "false", "sleep", "printf", "test", "expr", "python", "python3", "ruby", "php", "go", "rustc", "cargo", "gcc", "g++", "javac", "java", "solc", "dart", "swiftc", "kotlinc", "Rscript", "gem", "composer", "pip", "pip3", "bundle"];
       if (available.includes(target)) return { handled: true, stdout: `/usr/bin/${target}\n`, exitCode: 0 };
       return { handled: true, stderr: `which: ${target}: not found\n`, exitCode: 1 };
     }
@@ -299,6 +299,94 @@ serve(async (req) => {
       return new Response(stream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
     }
 
+    // Detect ruby -e "..."
+    const rubyEvalMatch = command.match(/^ruby\s+-e\s+["'](.+)["']$/s);
+    if (rubyEvalMatch) {
+      const code = rubyEvalMatch[1];
+      // Basic: convert puts to console.log style
+      const lines: string[] = [];
+      for (const line of code.split(";")) {
+        const trimmed = line.trim();
+        const putsMatch = trimmed.match(/^puts\s+(.+)$/);
+        if (putsMatch) {
+          try { lines.push(String(Function(`"use strict"; return (${putsMatch[1]})`)())); }
+          catch { lines.push(putsMatch[1].replace(/^["']|["']$/g, "")); }
+        } else if (trimmed.match(/^p\s+/)) {
+          const expr = trimmed.slice(2).trim();
+          try { lines.push(JSON.stringify(Function(`"use strict"; return (${expr})`)())); }
+          catch { lines.push(expr); }
+        }
+      }
+      const result = { stdout: lines.join("\n") + (lines.length ? "\n" : ""), stderr: "", exitCode: 0 };
+      const durationMs = Date.now() - startTime;
+      const stream = new ReadableStream({
+        start(controller) {
+          if (result.stdout) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "stdout", data: result.stdout })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done", exitCode: result.exitCode, cwd: currentCwd, durationMs })}\n\n`));
+          controller.close();
+        },
+      });
+      return new Response(stream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
+    }
+
+    // Detect php -r "..."
+    const phpEvalMatch = command.match(/^php\s+-r\s+["'](.+)["']$/s);
+    if (phpEvalMatch) {
+      const code = phpEvalMatch[1];
+      const lines: string[] = [];
+      // Basic: convert echo to output
+      for (const stmt of code.split(";")) {
+        const trimmed = stmt.trim();
+        const echoMatch = trimmed.match(/^echo\s+(.+)$/);
+        if (echoMatch) {
+          try { lines.push(String(Function(`"use strict"; return (${echoMatch[1]})`)())); }
+          catch { lines.push(echoMatch[1].replace(/^["']|["']$/g, "")); }
+        }
+      }
+      const result = { stdout: lines.join("") + (lines.length ? "\n" : ""), stderr: "", exitCode: 0 };
+      const durationMs = Date.now() - startTime;
+      const stream = new ReadableStream({
+        start(controller) {
+          if (result.stdout) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "stdout", data: result.stdout })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done", exitCode: result.exitCode, cwd: currentCwd, durationMs })}\n\n`));
+          controller.close();
+        },
+      });
+      return new Response(stream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
+    }
+
+    // Detect Rscript -e "..."
+    const rEvalMatch = command.match(/^Rscript\s+-e\s+["'](.+)["']$/s);
+    if (rEvalMatch) {
+      const code = rEvalMatch[1];
+      const lines: string[] = [];
+      for (const stmt of code.split(";")) {
+        const trimmed = stmt.trim();
+        const catMatch = trimmed.match(/^cat\s*\((.+)\)$/);
+        const printMatch = trimmed.match(/^print\s*\((.+)\)$/);
+        const m = catMatch || printMatch;
+        if (m) {
+          try { lines.push(String(Function(`"use strict"; return (${m[1]})`)())); }
+          catch { lines.push(m[1].replace(/^["']|["']$/g, "")); }
+        } else {
+          try {
+            const val = Function(`"use strict"; return (${trimmed})`)();
+            if (val !== undefined) lines.push(`[1] ${val}`);
+          } catch { /* skip */ }
+        }
+      }
+      const result = { stdout: lines.join("\n") + (lines.length ? "\n" : ""), stderr: "", exitCode: 0 };
+      const durationMs = Date.now() - startTime;
+      const stream = new ReadableStream({
+        start(controller) {
+          if (result.stdout) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "stdout", data: result.stdout })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done", exitCode: result.exitCode, cwd: currentCwd, durationMs })}\n\n`));
+          controller.close();
+        },
+      });
+      return new Response(stream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
+    }
+
     // Detect piped commands / compound commands with basic support
     if (command.includes(" | ") || command.includes(" && ") || command.includes(" ; ")) {
       // Execute first part, acknowledge the rest
@@ -315,10 +403,10 @@ serve(async (req) => {
 
     // For unsupported commands - give helpful feedback
     const cmd = command.trim().split(/\s+/)[0];
-    const packageManagers = ["npm", "pnpm", "yarn", "pip", "pip3", "cargo", "go", "gem", "composer", "maven", "gradle"];
-    const serverCommands = ["npm start", "npm run dev", "node server", "python -m http.server", "python manage.py runserver", "flask run", "rails server", "cargo run", "go run"];
-    const buildTools = ["npm run build", "pnpm build", "tsc", "webpack", "vite build", "esbuild", "rollup"];
-    const testRunners = ["npm test", "pnpm test", "pytest", "jest", "vitest", "mocha", "cargo test", "go test"];
+    const packageManagers = ["npm", "pnpm", "yarn", "pip", "pip3", "cargo", "go", "gem", "composer", "maven", "gradle", "dart", "pod", "mix", "bundle"];
+    const serverCommands = ["npm start", "npm run dev", "node server", "python -m http.server", "python manage.py runserver", "flask run", "rails server", "cargo run", "go run", "php artisan serve", "dart run", "swift run", "kotlinc"];
+    const buildTools = ["npm run build", "pnpm build", "tsc", "webpack", "vite build", "esbuild", "rollup", "cargo build", "go build", "gcc", "g++", "javac", "solc", "swiftc", "kotlinc", "rustc", "dart compile"];
+    const testRunners = ["npm test", "pnpm test", "pytest", "jest", "vitest", "mocha", "cargo test", "go test", "ruby -e", "php -r", "Rscript -e", "dart test"];
 
     let helpText = "";
     if (packageManagers.includes(cmd)) {
@@ -330,7 +418,7 @@ serve(async (req) => {
     } else if (testRunners.some(tr => command.startsWith(tr))) {
       helpText = `ℹ Test runners require a full runtime environment.\n  This terminal runs in a serverless Deno environment.\n\n  To run tests, connect a runner service or use a local development environment.\n`;
     } else {
-      helpText = `ℹ '${cmd}' is not available in this environment.\n\n  Available commands:\n  • Shell builtins: echo, pwd, date, whoami, hostname, uname, which, env, expr, seq, printf, sleep\n  • JS/TS eval: node -e "code" or deno eval "code"\n  • Python eval: python -c "code"\n\n  For full command support, connect a runner service.\n`;
+      helpText = `ℹ '${cmd}' is not available in this environment.\n\n  Available commands:\n  • Shell builtins: echo, pwd, date, whoami, hostname, uname, which, env, expr, seq, printf, sleep\n  • JS/TS eval: node -e "code" or deno eval "code"\n  • Python eval: python -c "code"\n  • Ruby eval: ruby -e "code"\n  • PHP eval: php -r "code"\n  • R eval: Rscript -e "code"\n\n  Supported runtimes: Node.js, Python, Go, Rust, C, C++, PHP, Ruby, Java, Solidity, Dart, Swift, Kotlin, R\n  For full command support, connect a runner service.\n`;
     }
 
     const durationMs = Date.now() - startTime;

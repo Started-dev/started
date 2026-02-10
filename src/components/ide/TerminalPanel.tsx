@@ -326,7 +326,7 @@ export function TerminalPanel() {
                   onChange={e => setCommandInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   className="flex-1 bg-transparent text-sm font-mono text-foreground outline-none placeholder:text-muted-foreground/50"
-                  placeholder="Type a command... (echo, pwd, node -e, python -c, etc.)"
+                  placeholder="Type a command... (node -e, python -c, ruby -e, php -r, go, rust, etc.)"
                   disabled={isRunning}
                   autoFocus
                 />
