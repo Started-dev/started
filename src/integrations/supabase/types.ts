@@ -791,6 +791,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      increment_usage: {
+        Args: {
+          _owner_id: string
+          _period_end: string
+          _period_start: string
+          _tokens: number
+        }
+        Returns: undefined
+      }
       is_project_member: {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
