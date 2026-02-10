@@ -616,6 +616,50 @@ export type Database = {
           },
         ]
       }
+      openclaw_installations: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          id: string
+          instance_url: string | null
+          logs: string | null
+          project_id: string
+          slug: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          instance_url?: string | null
+          logs?: string | null
+          project_id: string
+          slug: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          instance_url?: string | null
+          logs?: string | null
+          project_id?: string
+          slug?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_installations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
