@@ -33,6 +33,13 @@ const TOKEN_CONFIG: Record<string, { storageKey: string; label: string; placehol
     generateUrl: 'https://supabase.com/dashboard/account/tokens',
     generateLabel: 'Generate a token on Supabase',
   },
+  'mcp-cloudflare': {
+    storageKey: 'cloudflare_api_token',
+    label: 'Cloudflare API Token',
+    placeholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+    generateUrl: 'https://dash.cloudflare.com/profile/api-tokens',
+    generateLabel: 'Create a token on Cloudflare',
+  },
 };
 
 export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) {
@@ -81,6 +88,7 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
         githubToken: serverId === 'mcp-github' ? token : undefined,
         vercelToken: serverId === 'mcp-vercel' ? token : undefined,
         supabaseToken: serverId === 'mcp-supabase' ? token : undefined,
+        cloudflareToken: serverId === 'mcp-cloudflare' ? token : undefined,
       });
       if (result.ok) {
         const r = result.result as Record<string, unknown>;
