@@ -710,8 +710,15 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   }, [renameProjectRaw, projectId]);
 
   const deleteProjectAction = useCallback(async (pid: string) => {
-    await deleteProjectRaw(pid);
-  }, [deleteProjectRaw]);
+    const success = await deleteProjectRaw(pid);
+    if (success) {
+      // Switch to another project after deletion
+      const remaining = projects.filter(p => p.id !== pid);
+      if (remaining.length > 0) {
+        await switchProjectRaw(remaining[0].id);
+      }
+    }
+  }, [deleteProjectRaw, projects, switchProjectRaw]);
 
   // Show loading while persistence initializes
   if (persistenceLoading) {
