@@ -8,6 +8,9 @@ import { evaluatePermission, executeToolLocally } from '@/lib/tool-executor';
 import { getRunnerClient, IRunnerClient } from '@/lib/runner-client';
 import { parseUnifiedDiff, applyPatchToContent, extractDiffFromMessage, extractCommandsFromMessage } from '@/lib/patch-utils';
 import { streamChat, runCommandRemote, streamAgent } from '@/lib/api-client';
+import { detectRuntime } from '@/lib/detect-runtime';
+import { RUNTIME_TEMPLATES } from '@/types/runner';
+import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProjectPersistence } from '@/hooks/use-project-persistence';
 import { useConversationPersistence } from '@/hooks/use-conversation-persistence';
@@ -329,6 +332,21 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
     setFilesReady(true);
   }, [persistenceLoading, projectId, initialFiles, saveAllFiles, projects]);
 
+  // ─── Auto-detect runtime from project files ───
+  const prevRuntimeRef = useRef(project.runtimeType);
+  useEffect(() => {
+    if (!filesReady) return;
+    const detected = detectRuntime(files);
+    if (detected !== project.runtimeType) {
+      const label = RUNTIME_TEMPLATES.find(t => t.type === detected)?.label || detected;
+      setProject(prev => ({ ...prev, runtimeType: detected }));
+      if (prevRuntimeRef.current !== detected) {
+        toast({ title: `Runtime detected: ${label}` });
+      }
+    }
+    prevRuntimeRef.current = detected;
+  }, [files, filesReady]);
+
   const getFileById = useCallback((id: string) => files.find(f => f.id === id), [files]);
 
   const openFile = useCallback((fileId: string) => {
@@ -370,6 +388,10 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
       ts: 'typescript', tsx: 'typescriptreact', js: 'javascript',
       jsx: 'javascriptreact', json: 'json', md: 'markdown',
       py: 'python', css: 'css', html: 'html',
+      go: 'go', rs: 'rust', c: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp',
+      php: 'php', rb: 'ruby', java: 'java', sol: 'solidity',
+      dart: 'dart', swift: 'swift', kt: 'kotlin', kts: 'kotlin',
+      r: 'r', sh: 'shell', bash: 'shell',
     };
     const newFile: IDEFile = {
       id: `f-${Date.now()}`, name, path, content: isFolder ? '' : '',
