@@ -1,6 +1,6 @@
 project_id = "gihirezmjyoxxhllwitr"
 
-[functions.claude]
+[functions.started]
 verify_jwt = false
 
 [functions.apply-patch]
