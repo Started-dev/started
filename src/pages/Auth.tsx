@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Sparkles, Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import startedLogo from '@/assets/started-logo.png';
 
 export default function Auth() {
   const { user, loading, signIn, signUp } = useAuth();
@@ -45,8 +46,8 @@ export default function Auth() {
       <div className="w-full max-w-sm mx-4">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-8">
-          <Sparkles className="h-6 w-6 text-primary" />
-          <span className="text-xl font-semibold text-foreground">Claude Code</span>
+          <img src={startedLogo} alt="Started" className="h-8 w-8 rounded-full" />
+          <span className="text-xl font-semibold text-foreground">Started</span>
         </div>
 
         {signUpSuccess ? (

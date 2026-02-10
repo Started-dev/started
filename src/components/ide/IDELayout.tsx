@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { Play, MessageSquare, Terminal, Command, Sparkles, Sun, Moon, BookOpen, Brain, Plug, Anchor, LogOut, Clock, FolderOpen, ChevronDown, Users } from 'lucide-react';
+import { Play, MessageSquare, Terminal, Command, Sun, Moon, BookOpen, Brain, Plug, Anchor, LogOut, Clock, FolderOpen, ChevronDown, Users } from 'lucide-react';
+import startedLogo from '@/assets/started-logo.png';
 import { FileTree } from './FileTree';
 import { EditorPane } from './EditorPane';
 import { ChatPanel } from './ChatPanel';
@@ -76,8 +77,8 @@ export function IDELayout() {
       <div className="flex items-center justify-between px-4 h-10 bg-ide-panel-header border-b border-border shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-semibold text-foreground">Claude Code</span>
+            <img src={startedLogo} alt="Started" className="h-4 w-4 rounded-full" />
+            <span className="text-sm font-semibold text-foreground">Started</span>
           </div>
           <button
             onClick={() => setShowProjectSwitcher(true)}
