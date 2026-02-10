@@ -11,9 +11,15 @@ export interface AgentStep {
   detail?: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
   toolCall?: ToolCall;
+  filesChanged?: AgentFileChange[];
   startedAt?: Date;
   completedAt?: Date;
   durationMs?: number;
+}
+
+export interface AgentFileChange {
+  path: string;
+  action: 'created' | 'modified';
 }
 
 export interface AgentRun {
