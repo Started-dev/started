@@ -246,6 +246,13 @@ const TOKEN_CONFIG: Record<string, { storageKey: string; label: string; placehol
     generateUrl: 'https://app.sendgrid.com/settings/api_keys',
     generateLabel: 'Create an API key on SendGrid',
   },
+  'mcp-moralis': {
+    storageKey: 'moralis_api_key',
+    label: 'Moralis API Key',
+    placeholder: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    generateUrl: 'https://admin.moralis.io/web3apis',
+    generateLabel: 'Get an API key from Moralis',
+  },
   'mcp-evm-rpc': {
     storageKey: 'evm_rpc_url',
     label: 'EVM RPC URL',
