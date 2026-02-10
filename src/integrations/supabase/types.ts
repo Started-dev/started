@@ -356,6 +356,57 @@ export type Database = {
           },
         ]
       }
+      hook_execution_log: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          event: string
+          hook_id: string | null
+          id: string
+          input_payload: Json | null
+          output_payload: Json | null
+          project_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          event: string
+          hook_id?: string | null
+          id?: string
+          input_payload?: Json | null
+          output_payload?: Json | null
+          project_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          event?: string
+          hook_id?: string | null
+          id?: string
+          input_payload?: Json | null
+          output_payload?: Json | null
+          project_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hook_execution_log_hook_id_fkey"
+            columns: ["hook_id"]
+            isOneToOne: false
+            referencedRelation: "project_hooks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hook_execution_log_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mcp_audit_log: {
         Row: {
           agent_run_id: string | null
@@ -662,6 +713,53 @@ export type Database = {
           },
         ]
       }
+      project_hooks: {
+        Row: {
+          action: string
+          command_pattern: string | null
+          created_at: string
+          enabled: boolean
+          event: string
+          id: string
+          label: string
+          project_id: string
+          tool_pattern: string
+          webhook_url: string | null
+        }
+        Insert: {
+          action?: string
+          command_pattern?: string | null
+          created_at?: string
+          enabled?: boolean
+          event?: string
+          id?: string
+          label: string
+          project_id: string
+          tool_pattern?: string
+          webhook_url?: string | null
+        }
+        Update: {
+          action?: string
+          command_pattern?: string | null
+          created_at?: string
+          enabled?: boolean
+          event?: string
+          id?: string
+          label?: string
+          project_id?: string
+          tool_pattern?: string
+          webhook_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_hooks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_mcp_servers: {
         Row: {
           config: Json
@@ -738,6 +836,38 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "project_permissions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_webhook_secrets: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          project_id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label?: string
+          project_id: string
+          token?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          project_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_webhook_secrets_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"

@@ -30,6 +30,7 @@ export function IDELayout() {
     activeRightPanel, setActiveRightPanel,
     mcpServers, toggleMCPServer,
     hooks, toggleHook, addHook, removeHook,
+    webhookSecrets, hookExecutions, generateWebhookSecret, deleteWebhookSecret, refreshHookExecutions,
     snapshots, snapshotsLoading, loadSnapshots, createSnapshot, restoreSnapshot,
     projects, switchProject, createProject, renameProject, deleteProject,
     collaborators, collabMessages, fileLocks, presenceUsers,
@@ -308,7 +309,22 @@ export function IDELayout() {
 
       <CommandPalette />
       {showMCP && <MCPConfig servers={mcpServers} onToggleServer={toggleMCPServer} onClose={() => setShowMCP(false)} />}
-      {showHooks && <HooksConfig hooks={hooks} onToggleHook={toggleHook} onAddHook={addHook} onRemoveHook={removeHook} onClose={() => setShowHooks(false)} />}
+      {showHooks && (
+        <HooksConfig
+          hooks={hooks}
+          onToggleHook={toggleHook}
+          onAddHook={addHook}
+          onRemoveHook={removeHook}
+          onClose={() => setShowHooks(false)}
+          webhookSecrets={webhookSecrets}
+          executions={hookExecutions}
+          onGenerateSecret={generateWebhookSecret}
+          onDeleteSecret={deleteWebhookSecret}
+          onRefreshExecutions={refreshHookExecutions}
+          webhookBaseUrl={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/project-webhooks`}
+          projectId={project.id}
+        />
+      )}
       {showSnapshots && (
         <SnapshotBrowser
           snapshots={snapshots}
