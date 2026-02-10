@@ -41,6 +41,21 @@ async function stripeFetch(path: string, body?: string) {
   return data;
 }
 
+// Find existing Stripe customer by metadata or create a new one
+async function findOrCreateCustomer(userId: string, email: string): Promise<string> {
+  const searchResp = await fetch(
+    `https://api.stripe.com/v1/customers/search?query=${encodeURIComponent(`metadata["user_id"]:"${userId}"`)}`,
+    { headers: { Authorization: `Bearer ${STRIPE_SECRET_KEY}` } }
+  );
+  const searchData = await searchResp.json();
+  if (searchData.data && searchData.data.length > 0) {
+    return searchData.data[0].id;
+  }
+  const params = new URLSearchParams({ email, "metadata[user_id]": userId });
+  const customer = await stripeFetch("/customers", params.toString());
+  return customer.id;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -57,13 +72,15 @@ serve(async (req) => {
     if (authErr || !user) return json({ error: "unauthorized" }, 401);
 
     const { action, plan_key, session_id } = await req.json();
+    const origin = req.headers.get("origin") || "https://localhost:5173";
 
     // ─── Create Checkout Session ───
     if (action === "create_checkout") {
       const priceId = PLAN_PRICE_MAP[plan_key];
       if (!priceId) return json({ error: `Unknown plan: ${plan_key}` }, 400);
 
-      const origin = req.headers.get("origin") || "https://localhost:5173";
+      // Find or create Stripe customer for this user
+      const customerId = await findOrCreateCustomer(user.id, user.email || "");
 
       const params = new URLSearchParams({
         mode: "subscription",
@@ -71,14 +88,29 @@ serve(async (req) => {
         "line_items[0][quantity]": "1",
         success_url: `${origin}/settings?checkout=success&plan=${plan_key}`,
         cancel_url: `${origin}/settings?checkout=cancelled`,
-        client_reference_id: user.id,
-        customer_email: user.email || "",
+        customer: customerId,
+        "subscription_data[metadata][plan_key]": plan_key,
+        "subscription_data[metadata][user_id]": user.id,
         "metadata[plan_key]": plan_key,
         "metadata[user_id]": user.id,
+        allow_promotion_codes: "true",
       });
 
       const session = await stripeFetch("/checkout/sessions", params.toString());
       return json({ url: session.url });
+    }
+
+    // ─── Customer Portal (manage, downgrade, cancel) ───
+    if (action === "create_portal") {
+      const customerId = await findOrCreateCustomer(user.id, user.email || "");
+
+      const params = new URLSearchParams({
+        customer: customerId,
+        return_url: `${origin}/settings`,
+      });
+
+      const portalSession = await stripeFetch("/billing_portal/sessions", params.toString());
+      return json({ url: portalSession.url });
     }
 
     // ─── Verify Checkout & Update Plan ───
