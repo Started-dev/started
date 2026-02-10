@@ -3,7 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 export interface MCPToolCallRequest {
   tool: string;
   input: Record<string, unknown>;
-  githubToken: string;
+  githubToken?: string;
+  vercelToken?: string;
+  serverId: string;
 }
 
 export interface MCPToolCallResult {
@@ -12,10 +14,17 @@ export interface MCPToolCallResult {
   error?: string;
 }
 
-export async function callMCPTool({ tool, input, githubToken }: MCPToolCallRequest): Promise<MCPToolCallResult> {
-  const { data, error } = await supabase.functions.invoke('mcp-github', {
-    body: { tool, input, github_token: githubToken },
-  });
+export async function callMCPTool({ tool, input, githubToken, vercelToken, serverId }: MCPToolCallRequest): Promise<MCPToolCallResult> {
+  const functionName = serverId; // e.g. 'mcp-github' or 'mcp-vercel'
+  const body: Record<string, unknown> = { tool, input };
+
+  if (serverId === 'mcp-github') {
+    body.github_token = githubToken;
+  } else if (serverId === 'mcp-vercel') {
+    body.vercel_token = vercelToken;
+  }
+
+  const { data, error } = await supabase.functions.invoke(functionName, { body });
 
   if (error) {
     return { ok: false, error: error.message };

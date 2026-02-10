@@ -11,41 +11,71 @@ interface MCPConfigProps {
   onClose: () => void;
 }
 
+const TOKEN_CONFIG: Record<string, { storageKey: string; label: string; placeholder: string; generateUrl: string; generateLabel: string }> = {
+  'mcp-github': {
+    storageKey: 'github_pat',
+    label: 'GitHub Personal Access Token',
+    placeholder: 'ghp_xxxxxxxxxxxx',
+    generateUrl: 'https://github.com/settings/tokens/new?scopes=repo,read:user',
+    generateLabel: 'Generate a token on GitHub',
+  },
+  'mcp-vercel': {
+    storageKey: 'vercel_token',
+    label: 'Vercel Access Token',
+    placeholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxx',
+    generateUrl: 'https://vercel.com/account/tokens',
+    generateLabel: 'Create a token on Vercel',
+  },
+};
+
 export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [githubToken, setGithubToken] = useState('');
-  const [tokenSaved, setTokenSaved] = useState(false);
+  const [tokenInputs, setTokenInputs] = useState<Record<string, string>>({});
+  const [savedFlags, setSavedFlags] = useState<Record<string, boolean>>({});
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
 
-  const handleSaveToken = () => {
-    if (!githubToken.trim()) return;
-    sessionStorage.setItem('github_pat', githubToken);
-    setTokenSaved(true);
-    // Auto-enable the GitHub server
-    const ghServer = servers.find(s => s.id === 'mcp-github');
-    if (ghServer && !ghServer.enabled) {
-      onToggleServer('mcp-github');
-    }
+  const hasToken = (serverId: string) => {
+    const cfg = TOKEN_CONFIG[serverId];
+    if (!cfg) return false;
+    return savedFlags[serverId] || !!sessionStorage.getItem(cfg.storageKey);
   };
 
-  const handleTestTool = async (toolName: string) => {
-    const token = sessionStorage.getItem('github_pat') || githubToken;
-    if (!token) {
-      setTestResult({ ok: false, message: 'No GitHub token configured' });
-      return;
-    }
+  const handleSaveToken = (serverId: string) => {
+    const cfg = TOKEN_CONFIG[serverId];
+    const val = tokenInputs[serverId]?.trim();
+    if (!cfg || !val) return;
+    sessionStorage.setItem(cfg.storageKey, val);
+    setSavedFlags(p => ({ ...p, [serverId]: true }));
+    const server = servers.find(s => s.id === serverId);
+    if (server && !server.enabled) onToggleServer(serverId);
+  };
+
+  const handleTestTool = async (serverId: string, toolName: string) => {
+    const cfg = TOKEN_CONFIG[serverId];
+    if (!cfg) return;
+    const token = sessionStorage.getItem(cfg.storageKey) || tokenInputs[serverId];
+    if (!token) { setTestResult({ ok: false, message: 'No token configured' }); return; }
+
     setTesting(true);
     setTestResult(null);
     try {
+      const defaultInput = serverId === 'mcp-github' && toolName === 'github_list_repos'
+        ? { per_page: 5 }
+        : serverId === 'mcp-vercel' && toolName === 'vercel_list_projects'
+          ? { limit: 5 }
+          : {};
       const result = await callMCPTool({
         tool: toolName,
-        input: toolName === 'github_list_repos' ? { per_page: 5 } : {},
-        githubToken: token,
+        input: defaultInput,
+        serverId,
+        githubToken: serverId === 'mcp-github' ? token : undefined,
+        vercelToken: serverId === 'mcp-vercel' ? token : undefined,
       });
       if (result.ok) {
-        const count = Array.isArray(result.result) ? result.result.length : 1;
-        setTestResult({ ok: true, message: `✓ ${toolName} returned ${count} result(s)` });
+        const r = result.result as Record<string, unknown>;
+        const items = Array.isArray(r) ? r : Array.isArray(r?.projects) ? r.projects : Array.isArray(r?.deployments) ? r.deployments : [r];
+        setTestResult({ ok: true, message: `✓ ${toolName} returned ${items.length} result(s)` });
       } else {
         setTestResult({ ok: false, message: result.error || 'Unknown error' });
       }
@@ -55,8 +85,7 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
     setTesting(false);
   };
 
-  const savedToken = sessionStorage.getItem('github_pat');
-  const hasToken = tokenSaved || !!savedToken;
+  const isAuthServer = (serverId: string) => !!TOKEN_CONFIG[serverId];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
@@ -65,7 +94,6 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
         className="relative w-full max-w-md bg-popover border border-border rounded-lg shadow-2xl overflow-hidden animate-fade-in"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <Plug className="h-4 w-4 text-primary" />
@@ -76,11 +104,13 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
           </button>
         </div>
 
-        {/* Server list */}
         <div className="max-h-[450px] overflow-auto p-2 space-y-1">
           {servers.map(server => {
             const isExpanded = expandedId === server.id;
-            const isGitHub = server.id === 'mcp-github';
+            const isAuth = isAuthServer(server.id);
+            const cfg = TOKEN_CONFIG[server.id];
+            const serverHasToken = hasToken(server.id);
+
             return (
               <div key={server.id} className="border border-border rounded-md overflow-hidden">
                 <div
@@ -91,22 +121,14 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-foreground">{server.name}</span>
-                      {isGitHub && hasToken && (
+                      {isAuth && serverHasToken && (
                         <span className="text-[10px] px-1.5 py-0.5 bg-ide-success/10 text-ide-success rounded-sm flex items-center gap-0.5">
-                          <Key className="h-2.5 w-2.5" />
-                          Token set
+                          <Key className="h-2.5 w-2.5" /> Token set
                         </span>
                       )}
-                      {server.requiresAuth && !hasToken && isGitHub && (
+                      {isAuth && !serverHasToken && (
                         <span className="text-[10px] px-1.5 py-0.5 bg-ide-warning/10 text-ide-warning rounded-sm flex items-center gap-0.5">
-                          <Shield className="h-2.5 w-2.5" />
-                          Auth needed
-                        </span>
-                      )}
-                      {!isGitHub && server.requiresAuth && !server.authConfigured && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-ide-warning/10 text-ide-warning rounded-sm flex items-center gap-0.5">
-                          <Shield className="h-2.5 w-2.5" />
-                          Auth needed
+                          <Shield className="h-2.5 w-2.5" /> Auth needed
                         </span>
                       )}
                     </div>
@@ -120,49 +142,44 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
                         : 'bg-muted text-muted-foreground hover:bg-accent'
                     }`}
                   >
-                    {server.enabled ? (
-                      <span className="flex items-center gap-1"><Check className="h-3 w-3" /> On</span>
-                    ) : 'Off'}
+                    {server.enabled ? <span className="flex items-center gap-1"><Check className="h-3 w-3" /> On</span> : 'Off'}
                   </button>
-                  {isExpanded ? (
-                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  ) : (
-                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  )}
+                  {isExpanded
+                    ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                 </div>
 
                 {isExpanded && (
                   <div className="px-3 pb-2.5 pt-0 border-t border-border">
-                    {/* GitHub token config */}
-                    {isGitHub && (
+                    {cfg && (
                       <div className="mt-2 mb-3 space-y-2">
                         <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                          GitHub Personal Access Token
+                          {cfg.label}
                         </label>
                         <div className="flex gap-1.5">
                           <Input
                             type="password"
-                            placeholder={hasToken ? '••••••••••••' : 'ghp_xxxxxxxxxxxx'}
-                            value={githubToken}
-                            onChange={e => setGithubToken(e.target.value)}
+                            placeholder={serverHasToken ? '••••••••••••' : cfg.placeholder}
+                            value={tokenInputs[server.id] || ''}
+                            onChange={e => setTokenInputs(p => ({ ...p, [server.id]: e.target.value }))}
                             className="h-7 text-xs bg-background font-mono"
                           />
                           <Button
                             size="sm"
-                            onClick={handleSaveToken}
-                            disabled={!githubToken.trim()}
+                            onClick={() => handleSaveToken(server.id)}
+                            disabled={!tokenInputs[server.id]?.trim()}
                             className="h-7 text-xs px-2.5"
                           >
                             Save
                           </Button>
                         </div>
                         <a
-                          href="https://github.com/settings/tokens/new?scopes=repo,read:user"
+                          href={cfg.generateUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-[10px] text-primary hover:underline flex items-center gap-1"
                         >
-                          Generate a token on GitHub <ExternalLink className="h-2.5 w-2.5" />
+                          {cfg.generateLabel} <ExternalLink className="h-2.5 w-2.5" />
                         </a>
                       </div>
                     )}
@@ -178,9 +195,9 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
                             <span className="text-xs font-mono text-foreground">{tool.name}</span>
                             <p className="text-[10px] text-muted-foreground truncate">{tool.description}</p>
                           </div>
-                          {isGitHub && hasToken && (
+                          {isAuth && serverHasToken && (
                             <button
-                              onClick={() => handleTestTool(tool.name)}
+                              onClick={() => handleTestTool(server.id, tool.name)}
                               disabled={testing}
                               className="opacity-0 group-hover:opacity-100 text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded-sm hover:bg-primary/20 transition-all"
                             >
@@ -191,7 +208,6 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
                       ))}
                     </div>
 
-                    {/* Test result */}
                     {testResult && (
                       <div className={`mt-2 text-[10px] px-2 py-1.5 rounded-sm ${
                         testResult.ok ? 'bg-ide-success/10 text-ide-success' : 'bg-destructive/10 text-destructive'
@@ -206,7 +222,6 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
           })}
         </div>
 
-        {/* Footer */}
         <div className="px-4 py-2.5 border-t border-border">
           <p className="text-[10px] text-muted-foreground">
             MCP servers extend Claude's capabilities. Tokens are stored in your browser session only.
