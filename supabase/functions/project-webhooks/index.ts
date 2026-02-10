@@ -90,13 +90,51 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            hook_id: hook.id,
-            event: "Webhook",
-            payload,
+            hook_id: hook.id, event: "Webhook", payload,
             timestamp: new Date().toISOString(),
           }),
         });
         outputPayload = { status: resp.status, statusText: resp.statusText };
+        if (!resp.ok) status = "failed";
+      } else if (hook.action === "slack" && hook.webhook_url) {
+        const slackBody = {
+          attachments: [{
+            color: "#3498db",
+            blocks: [
+              { type: "header", text: { type: "plain_text", text: `🔔 Webhook — ${hook.label}`, emoji: true } },
+              { type: "section", fields: [
+                { type: "mrkdwn", text: `*Project*\n\`${projectId.slice(0, 8)}…\`` },
+                { type: "mrkdwn", text: `*Payload*\n\`\`\`${JSON.stringify(payload).slice(0, 300)}\`\`\`` },
+              ]},
+            ],
+          }],
+        };
+        const resp = await fetch(hook.webhook_url, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(slackBody),
+        });
+        const respText = await resp.text();
+        outputPayload = { status: resp.status, response: respText };
+        if (!resp.ok) status = "failed";
+      } else if (hook.action === "discord" && hook.webhook_url) {
+        const discordBody = {
+          embeds: [{
+            title: `🔔 Webhook — ${hook.label}`,
+            color: 0x3498db,
+            fields: [
+              { name: "Project", value: `\`${projectId.slice(0, 8)}…\``, inline: true },
+              { name: "Payload", value: `\`\`\`json\n${JSON.stringify(payload, null, 2).slice(0, 300)}\n\`\`\``, inline: false },
+            ],
+            timestamp: new Date().toISOString(),
+            footer: { text: "Started Webhooks" },
+          }],
+        };
+        const resp = await fetch(hook.webhook_url, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(discordBody),
+        });
+        const respText = await resp.text();
+        outputPayload = { status: resp.status, response: respText };
         if (!resp.ok) status = "failed";
       } else if (hook.action === "log") {
         outputPayload = { logged: true };

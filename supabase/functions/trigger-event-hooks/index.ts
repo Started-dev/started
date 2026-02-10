@@ -6,6 +6,61 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+/** Build a Slack Block Kit message for an event */
+function buildSlackPayload(event: string, projectId: string, payload: Record<string, unknown>, label: string) {
+  const emoji = event === "OnDeploy" ? "🚀" : event === "OnError" ? "🔴" : event === "OnFileChange" ? "📝" : "🔔";
+  const color = event === "OnError" ? "#e74c3c" : event === "OnDeploy" ? "#2ecc71" : "#3498db";
+  return {
+    attachments: [{
+      color,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: `${emoji} ${event} — ${label}`, emoji: true },
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Project*\n\`${projectId.slice(0, 8)}…\`` },
+            { type: "mrkdwn", text: `*Event*\n${event}` },
+            { type: "mrkdwn", text: `*Triggered by*\n${payload.triggered_by || "system"}` },
+            { type: "mrkdwn", text: `*Time*\n${payload.triggered_at || new Date().toISOString()}` },
+          ],
+        },
+        ...(payload.command ? [{
+          type: "section",
+          text: { type: "mrkdwn", text: `*Command*\n\`\`\`${payload.command}\`\`\`` },
+        }] : []),
+        ...(payload.error ? [{
+          type: "section",
+          text: { type: "mrkdwn", text: `*Error*\n\`\`\`${String(payload.error).slice(0, 500)}\`\`\`` },
+        }] : []),
+      ],
+    }],
+  };
+}
+
+/** Build a Discord embed message for an event */
+function buildDiscordPayload(event: string, projectId: string, payload: Record<string, unknown>, label: string) {
+  const color = event === "OnError" ? 0xe74c3c : event === "OnDeploy" ? 0x2ecc71 : 0x3498db;
+  const emoji = event === "OnDeploy" ? "🚀" : event === "OnError" ? "🔴" : event === "OnFileChange" ? "📝" : "🔔";
+  return {
+    embeds: [{
+      title: `${emoji} ${event} — ${label}`,
+      color,
+      fields: [
+        { name: "Project", value: `\`${projectId.slice(0, 8)}…\``, inline: true },
+        { name: "Event", value: event, inline: true },
+        { name: "Triggered by", value: String(payload.triggered_by || "system"), inline: true },
+        ...(payload.command ? [{ name: "Command", value: `\`\`\`${payload.command}\`\`\``, inline: false }] : []),
+        ...(payload.error ? [{ name: "Error", value: `\`\`\`${String(payload.error).slice(0, 500)}\`\`\``, inline: false }] : []),
+      ],
+      timestamp: payload.triggered_at || new Date().toISOString(),
+      footer: { text: "Started CI/CD" },
+    }],
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -63,22 +118,15 @@ Deno.serve(async (req) => {
   if (!project_id || !event) {
     return new Response(
       JSON.stringify({ error: "Missing project_id or event" }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
-  // Validate supported events
   const supportedEvents = ["OnDeploy", "OnFileChange", "OnError"];
   if (!supportedEvents.includes(event)) {
     return new Response(
       JSON.stringify({ error: `Unsupported event: ${event}. Supported: ${supportedEvents.join(", ")}` }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
@@ -93,15 +141,18 @@ Deno.serve(async (req) => {
   if (!hooks || hooks.length === 0) {
     return new Response(
       JSON.stringify({ ok: true, hooks_triggered: 0, message: "No matching hooks" }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
   let triggered = 0;
   const results: Array<{ hook_id: string; status: string; duration_ms: number }> = [];
+
+  const enrichedPayload = {
+    ...payload,
+    triggered_by: user.email || user.id,
+    triggered_at: new Date().toISOString(),
+  };
 
   for (const hook of hooks) {
     const startTime = Date.now();
@@ -110,22 +161,36 @@ Deno.serve(async (req) => {
 
     try {
       if (hook.action === "webhook" && hook.webhook_url) {
-        // Forward to external URL
         const resp = await fetch(hook.webhook_url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            hook_id: hook.id,
-            event,
-            project_id,
-            payload: {
-              ...payload,
-              triggered_by: user.email || user.id,
-              triggered_at: new Date().toISOString(),
-            },
+            hook_id: hook.id, event, project_id, payload: enrichedPayload,
           }),
         });
         outputPayload = { status: resp.status, statusText: resp.statusText };
+        if (!resp.ok) status = "failed";
+      } else if (hook.action === "slack" && hook.webhook_url) {
+        // Slack incoming webhook with Block Kit formatting
+        const slackBody = buildSlackPayload(event, project_id, enrichedPayload, hook.label);
+        const resp = await fetch(hook.webhook_url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(slackBody),
+        });
+        const respText = await resp.text();
+        outputPayload = { status: resp.status, response: respText };
+        if (!resp.ok) status = "failed";
+      } else if (hook.action === "discord" && hook.webhook_url) {
+        // Discord webhook with embed formatting
+        const discordBody = buildDiscordPayload(event, project_id, enrichedPayload, hook.label);
+        const resp = await fetch(hook.webhook_url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(discordBody),
+        });
+        const respText = await resp.text();
+        outputPayload = { status: resp.status, response: respText };
         if (!resp.ok) status = "failed";
       } else if (hook.action === "log") {
         outputPayload = { logged: true, event, label: hook.label };
@@ -143,7 +208,6 @@ Deno.serve(async (req) => {
 
     const durationMs = Date.now() - startTime;
 
-    // Log execution
     await supabase.from("hook_execution_log").insert({
       hook_id: hook.id,
       project_id,
@@ -159,9 +223,6 @@ Deno.serve(async (req) => {
 
   return new Response(
     JSON.stringify({ ok: true, hooks_triggered: triggered, results }),
-    {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    }
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 });

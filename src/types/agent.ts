@@ -37,7 +37,7 @@ export interface AgentRun {
 
 export type HookEvent = 'PreToolUse' | 'PostToolUse' | 'Webhook' | 'OnDeploy' | 'OnFileChange' | 'OnError';
 
-export type HookAction = 'allow' | 'deny' | 'log' | 'transform' | 'webhook' | 'notify';
+export type HookAction = 'allow' | 'deny' | 'log' | 'transform' | 'webhook' | 'notify' | 'slack' | 'discord';
 
 export interface Hook {
   id: string;

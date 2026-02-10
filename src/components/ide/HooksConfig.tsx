@@ -99,6 +99,8 @@ export function HooksConfig({
             hook.action === 'allow' ? 'bg-ide-success/10 text-ide-success' :
             hook.action === 'webhook' ? 'bg-primary/10 text-primary' :
             hook.action === 'notify' ? 'bg-yellow-500/10 text-yellow-500' :
+            hook.action === 'slack' ? 'bg-[hsl(200,80%,50%)]/10 text-[hsl(200,80%,50%)]' :
+            hook.action === 'discord' ? 'bg-[hsl(235,86%,65%)]/10 text-[hsl(235,86%,65%)]' :
             'bg-muted text-muted-foreground'
           }`}>
             {hook.action}
@@ -155,6 +157,8 @@ export function HooksConfig({
           <option value="transform">transform</option>
           <option value="webhook">webhook</option>
           <option value="notify">notify</option>
+          <option value="slack">slack</option>
+          <option value="discord">discord</option>
         </select>
       </div>
       <div className="flex gap-2">
@@ -171,11 +175,15 @@ export function HooksConfig({
           className="flex-1 bg-input text-foreground text-xs px-2 py-1.5 rounded-sm border border-border outline-none"
         />
       </div>
-      {(newAction === 'webhook') && (
+      {(newAction === 'webhook' || newAction === 'slack' || newAction === 'discord') && (
         <input
           value={newWebhookUrl}
           onChange={e => setNewWebhookUrl(e.target.value)}
-          placeholder="https://example.com/webhook"
+          placeholder={
+            newAction === 'slack' ? 'https://hooks.slack.com/services/...' :
+            newAction === 'discord' ? 'https://discord.com/api/webhooks/...' :
+            'https://example.com/webhook'
+          }
           className="w-full bg-input text-foreground text-xs px-2 py-1.5 rounded-sm border border-border outline-none focus:border-primary"
         />
       )}
