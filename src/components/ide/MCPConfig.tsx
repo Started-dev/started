@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
-import { Plug, Check, X, Shield, ChevronRight, ChevronDown, Wrench, Key, Loader2, ExternalLink } from 'lucide-react';
+import { useState, useMemo, useCallback } from 'react';
+import { Plug, Check, X, Shield, ChevronRight, ChevronDown, Wrench, Key, Loader2, ExternalLink, Github } from 'lucide-react';
 import { MCPServer } from '@/types/agent';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { callMCPTool } from '@/lib/mcp-client';
 import { WalletConnect } from '@/components/ide/WalletConnect';
+import { supabase } from '@/integrations/supabase/client';
 
 interface MCPConfigProps {
   servers: MCPServer[];
@@ -296,6 +297,77 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
   const [savedFlags, setSavedFlags] = useState<Record<string, boolean>>({});
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
+
+  const handleGitHubOAuth = useCallback(async () => {
+    setOauthLoading(true);
+    try {
+      // Get the GitHub client ID from the edge function
+      const { data, error } = await supabase.functions.invoke('github-oauth', {
+        body: { action: 'get_client_id' },
+      });
+      if (error || !data?.client_id) {
+        setTestResult({ ok: false, message: 'GitHub OAuth not configured. Use a Personal Access Token instead.' });
+        setOauthLoading(false);
+        return;
+      }
+      const clientId = data.client_id;
+      const redirectUri = `${window.location.origin}/auth/github/callback`;
+      const state = crypto.randomUUID();
+      sessionStorage.setItem('github_oauth_state', state);
+      const scope = 'repo,read:user,read:org';
+      const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}`;
+      
+      // Open popup
+      const popup = window.open(url, 'github-oauth', 'width=600,height=700,popup=yes');
+      
+      // Listen for callback message
+      const handler = async (event: MessageEvent) => {
+        if (event.data?.type !== 'github-oauth-callback') return;
+        window.removeEventListener('message', handler);
+        
+        const { code, state: returnedState } = event.data;
+        const savedState = sessionStorage.getItem('github_oauth_state');
+        if (returnedState !== savedState) {
+          setTestResult({ ok: false, message: 'OAuth state mismatch. Please try again.' });
+          setOauthLoading(false);
+          return;
+        }
+        
+        // Exchange code for token
+        const { data: tokenData, error: tokenError } = await supabase.functions.invoke('github-oauth', {
+          body: { action: 'exchange_code', code, redirect_uri: redirectUri },
+        });
+        
+        if (tokenError || tokenData?.error) {
+          setTestResult({ ok: false, message: tokenData?.error || tokenError?.message || 'OAuth failed' });
+          setOauthLoading(false);
+          return;
+        }
+        
+        localStorage.setItem('github_pat', tokenData.access_token);
+        setSavedFlags(p => ({ ...p, 'mcp-github': true }));
+        const server = servers.find(s => s.id === 'mcp-github');
+        if (server && !server.enabled) onToggleServer('mcp-github');
+        setTestResult({ ok: true, message: '✓ GitHub connected via OAuth!' });
+        window.dispatchEvent(new Event('github-token-changed'));
+        setOauthLoading(false);
+      };
+      window.addEventListener('message', handler);
+      
+      // Fallback: if popup closed without completing
+      const checkClosed = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(checkClosed);
+          window.removeEventListener('message', handler);
+          setOauthLoading(false);
+        }
+      }, 1000);
+    } catch (err) {
+      setTestResult({ ok: false, message: err instanceof Error ? err.message : 'OAuth failed' });
+      setOauthLoading(false);
+    }
+  }, [servers, onToggleServer]);
 
   const hasToken = (serverId: string) => {
     const cfg = TOKEN_CONFIG[serverId];
@@ -548,6 +620,42 @@ export function MCPConfig({ servers, onToggleServer, onClose }: MCPConfigProps) 
 
                 {isExpanded && (
                   <div className="px-3 pb-2.5 pt-0 border-t border-border">
+                    {/* GitHub OAuth button */}
+                    {server.id === 'mcp-github' && (
+                      <div className="mt-2 mb-3 space-y-2">
+                        <Button
+                          size="sm"
+                          onClick={handleGitHubOAuth}
+                          disabled={oauthLoading || serverHasToken}
+                          className="h-8 text-xs w-full gap-2"
+                          variant={serverHasToken ? 'outline' : 'default'}
+                        >
+                          {oauthLoading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Github className="h-3.5 w-3.5" />
+                          )}
+                          {serverHasToken ? 'GitHub Connected ✓' : 'Connect with GitHub'}
+                        </Button>
+                        {serverHasToken && (
+                          <button
+                            onClick={() => {
+                              localStorage.removeItem('github_pat');
+                              setSavedFlags(p => ({ ...p, 'mcp-github': false }));
+                              window.dispatchEvent(new Event('github-token-changed'));
+                            }}
+                            className="text-[10px] text-destructive hover:underline"
+                          >
+                            Disconnect
+                          </button>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-px bg-border" />
+                          <span className="text-[10px] text-muted-foreground">or paste a token</span>
+                          <div className="flex-1 h-px bg-border" />
+                        </div>
+                      </div>
+                    )}
                     {cfg && (
                       <div className="mt-2 mb-3 space-y-2">
                         <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">

@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import type { ProjectInfo } from '@/hooks/use-project-persistence';
+import { GitHubStatus } from '@/components/ide/GitHubStatus';
 
 interface ProjectSwitcherProps {
   projects: ProjectInfo[];
@@ -92,6 +93,11 @@ export function ProjectSwitcher({
             <button onClick={onClose} className="p-1 hover:bg-muted rounded-sm">
               <X className="h-4 w-4 text-muted-foreground" />
             </button>
+          </div>
+
+          {/* GitHub Status */}
+          <div className="px-4 py-2 border-b border-border">
+            <GitHubStatus />
           </div>
 
           {/* Create new */}
