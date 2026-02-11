@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, FileCode, GitBranch, Play, Camera, Brain } from 'lucide-react';
+import { X, FileCode, GitBranch, Play, Brain, Plug } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useIDE } from '@/contexts/IDEContext';
 
@@ -11,16 +11,27 @@ interface ContextChipData {
 }
 
 export function ContextStrip() {
-  const { activeTabId, getFileById, runs, pendingPatches, agentRun } = useIDE();
+  const { activeTabId, getFileById, runs, pendingPatches, agentRun, runnerStatus } = useIDE();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
-  // Reset dismissed chips when state changes significantly
   useEffect(() => {
     setDismissed(new Set());
   }, [activeTabId]);
 
   const chips = useMemo(() => {
     const result: ContextChipData[] = [];
+
+    // @runner chip (when disconnected)
+    if (runnerStatus === 'disconnected' || runnerStatus === 'misconfigured') {
+      result.push({
+        key: 'runner',
+        icon: <Plug className="h-3 w-3" />,
+        label: `@runner: ${runnerStatus}`,
+        tooltip: runnerStatus === 'disconnected'
+          ? 'No runner node connected. Connect a runner to execute commands.'
+          : 'Runner misconfigured. Check runner settings.',
+      });
+    }
 
     // @file chip
     if (activeTabId) {
@@ -51,8 +62,8 @@ export function ContextStrip() {
       });
     }
 
-    // @run chip
-    if (runs.length > 0) {
+    // @run chip (only if runner connected)
+    if (runs.length > 0 && runnerStatus !== 'disconnected') {
       const last = runs[runs.length - 1];
       const statusLabel = last.status === 'error' ? 'failed' : last.status;
       result.push({
@@ -75,7 +86,7 @@ export function ContextStrip() {
     }
 
     return result.filter(c => !dismissed.has(c.key));
-  }, [activeTabId, getFileById, runs, pendingPatches, agentRun, dismissed]);
+  }, [activeTabId, getFileById, runs, pendingPatches, agentRun, dismissed, runnerStatus]);
 
   if (chips.length === 0) return null;
 
@@ -84,7 +95,11 @@ export function ContextStrip() {
       {chips.map(chip => (
         <Tooltip key={chip.key}>
           <TooltipTrigger asChild>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground border border-border/60 bg-muted/40 rounded-full transition-colors duration-150 hover:bg-muted/60 group cursor-default">
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] border rounded-full transition-colors duration-150 group cursor-default ${
+              chip.key === 'runner'
+                ? 'text-ide-warning border-ide-warning/40 bg-ide-warning/10 hover:bg-ide-warning/20'
+                : 'text-muted-foreground border-border/60 bg-muted/40 hover:bg-muted/60'
+            }`}>
               {chip.icon}
               <span className="font-mono">{chip.label}</span>
               <button

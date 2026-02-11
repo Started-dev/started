@@ -210,6 +210,8 @@ const LANG_MAP: Record<string, string> = {
 
 import type { ModelId } from '@/components/ide/ModelSelector';
 
+import type { RunnerStatus } from '@/types/ide';
+
 interface IDEContextType {
   project: Project;
   setRuntimeType: (rt: RuntimeType) => void;
@@ -302,6 +304,7 @@ interface IDEContextType {
   alwaysAllowPermission: () => void;
   selectedModel: ModelId;
   setSelectedModel: (model: ModelId) => void;
+  runnerStatus: RunnerStatus;
 }
 
 const IDEContext = createContext<IDEContextType | null>(null);
@@ -340,6 +343,7 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [pendingPermission, setPendingPermission] = useState<(PermissionRequest & { runId: string }) | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelId>('started/started-ai');
+  const [runnerStatus, setRunnerStatus] = useState<RunnerStatus>('disconnected');
 
   // Agent state
   const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
@@ -989,6 +993,8 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
       },
       onDone: (result) => {
         setRunnerSession(prev => prev ? { ...prev, cwd: result.cwd, status: 'ready' } : null);
+        const runnerUnavailable = !!(result as any).runnerUnavailable;
+        if (runnerUnavailable) setRunnerStatus('disconnected');
         setRuns(prev => prev.map(r =>
           r.id === run.id
             ? {
@@ -996,6 +1002,7 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
                 status: result.exitCode === 0 ? 'success' as const : 'error' as const,
                 logs: r.logs + `\n${result.exitCode === 0 ? '✓' : '✗'} Process exited with code ${result.exitCode}\n`,
                 exitCode: result.exitCode, cwd: result.cwd, durationMs: result.durationMs,
+                runnerUnavailable,
               }
             : r
         ));
@@ -1046,11 +1053,33 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
         }
       },
       onError: (error) => {
+        // Intercept Edge Runtime spawn error
+        const isSpawnError = error.includes('Spawning subprocesses is not allowed') || error.includes('runner_unavailable');
+        if (isSpawnError) {
+          setRunnerStatus('disconnected');
+        }
         setRuns(prev => prev.map(r =>
           r.id === run.id
-            ? { ...r, status: 'error' as const, logs: r.logs + `\n⚠ Error: ${error}\n`, exitCode: 1 }
+            ? { ...r, status: 'error' as const, logs: r.logs + `\n⚠ Error: ${isSpawnError ? 'Runner execution unavailable. Connect a runner to execute commands.' : error}\n`, exitCode: 1, runnerUnavailable: isSpawnError }
             : r
         ));
+        // Emit structured cards into chat
+        if (isSpawnError) {
+          const resultMsg: ChatMessage = {
+            id: `msg-result-${Date.now()}`, role: 'assistant', content: '', timestamp: new Date(),
+            cardType: 'result',
+            resultData: { exitCode: 1, logs: '', errorSummary: 'Edge runtime cannot execute shell commands. Connect a runner node.', runnerUnavailable: true },
+          };
+          const suggestionMsg: ChatMessage = {
+            id: `msg-suggest-${Date.now()}`, role: 'assistant', content: '', timestamp: new Date(),
+            cardType: 'suggestion',
+            suggestionData: {
+              primary: { label: 'Connect Runner', action: 'connect_runner' },
+              secondary: [{ label: 'View Docs', action: 'view_docs' }],
+            },
+          };
+          setChatMessages(prev => [...prev, resultMsg, suggestionMsg]);
+        }
         // Fire OnError hooks
         triggerEventHooks({
           projectId: project.id,
@@ -1422,6 +1451,7 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
       denyPermission,
       alwaysAllowPermission,
       selectedModel, setSelectedModel,
+      runnerStatus,
     }}>
       {children}
     </IDEContext.Provider>

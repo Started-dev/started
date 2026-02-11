@@ -12,6 +12,9 @@ import { ModelSelector } from './ModelSelector';
 import { extractCommandsFromMessage } from '@/lib/patch-utils';
 import { ChatHeader } from './chat/ChatHeader';
 import { AssistantMessage } from './chat/AssistantMessage';
+import { ActionCard } from './chat/ActionCard';
+import { ResultCard } from './chat/ResultCard';
+import { SuggestionCard } from './chat/SuggestionCardMessage';
 import { ContextStrip } from './chat/ContextStrip';
 import { SuggestionCards } from './chat/SuggestionCards';
 import { HesitationPrompt } from './chat/HesitationPrompt';
@@ -22,7 +25,7 @@ export function ChatPanel() {
     chatMessages, sendMessage, selectedText, activeTabId, getFileById, runs,
     toolCalls, pendingPatches, approveToolCall, denyToolCall, alwaysAllowTool, alwaysAllowCommand,
     applyPatch, applyPatchAndRun, cancelPatch,
-    startAgent, setActiveRightPanel, agentRun,
+    startAgent, setActiveRightPanel, agentRun, runCommand,
     conversations, activeConversationId, switchConversation, newConversation, deleteConversation,
     selectedModel, setSelectedModel,
   } = useIDE();
@@ -150,13 +153,53 @@ export function ChatPanel() {
 
       {/* Messages */}
       <div className="flex-1 overflow-auto px-3 py-3 space-y-4">
-        {chatMessages.map(msg => (
-          msg.role === 'assistant' ? (
+        {chatMessages.map(msg => {
+          // Structured card types
+          if (msg.cardType === 'action') {
+            return <ActionCard key={msg.id} msg={msg} />;
+          }
+          if (msg.cardType === 'result') {
+            return (
+              <ResultCard
+                key={msg.id}
+                msg={msg}
+                onRetry={msg.resultData?.runnerUnavailable ? undefined : () => {
+                  // Find the original command from nearby action cards
+                  const actionMsg = chatMessages.find(m => m.cardType === 'action' && m.actionData);
+                  if (actionMsg?.actionData) runCommand(actionMsg.actionData.command);
+                }}
+                onSendToChat={() => {
+                  if (msg.resultData?.logs) {
+                    sendMessage(`The last command failed with exit code ${msg.resultData.exitCode}. Here's the output:\n\`\`\`\n${msg.resultData.logs.slice(0, 2000)}\n\`\`\`\nPlease help me fix this.`);
+                  }
+                }}
+              />
+            );
+          }
+          if (msg.cardType === 'suggestion') {
+            return (
+              <SuggestionCard
+                key={msg.id}
+                msg={msg}
+                onAction={(action) => {
+                  if (action === 'connect_runner') {
+                    setActiveRightPanel('protocol');
+                  } else if (action === 'view_docs') {
+                    window.open('https://docs.started.dev/runners', '_blank');
+                  } else {
+                    sendMessage(action);
+                  }
+                }}
+              />
+            );
+          }
+          // Standard messages
+          return msg.role === 'assistant' ? (
             <AssistantMessage key={msg.id} msg={msg} />
           ) : (
             <UserMessage key={msg.id} msg={msg} chipIcon={chipIcon} />
-          )
-        ))}
+          );
+        })}
 
         {recentTools.length > 0 && (
           <div className="space-y-1.5">
