@@ -10,6 +10,7 @@ import Auth from "./pages/Auth";
 import UserSettings from "./pages/UserSettings";
 import Docs from "./pages/Docs";
 import NotFound from "./pages/NotFound";
+import GitHubCallback from "./pages/GitHubCallback";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -37,6 +38,7 @@ const App = () => (
           <AuthProvider>
             <Routes>
               <Route path="/auth" element={<Auth />} />
+              <Route path="/auth/github/callback" element={<GitHubCallback />} />
               <Route path="/docs" element={<Docs />} />
               <Route path="/docs/:section" element={<Docs />} />
               <Route path="/docs/:section/:subsection" element={<Docs />} />
