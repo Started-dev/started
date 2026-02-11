@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Play, MessageSquare, Terminal, Command, Sun, Moon, BookOpen, Brain, Plug, Anchor, LogOut, Clock, FolderOpen, ChevronDown, Users, Zap, User, Shield, Rocket, Cloud, Download, Activity, Globe2 } from 'lucide-react';
 import startedLogo from '@/assets/started-logo.png';
+import startedWordmark from '@/assets/started-wordmark.svg';
 import { FileTree } from './FileTree';
 import { EditorPane } from './EditorPane';
 import { ChatPanel } from './ChatPanel';
@@ -119,8 +120,7 @@ export function IDELayout() {
       <div className="flex items-center justify-between px-4 h-10 bg-ide-panel-header border-b border-border shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <img src={startedLogo} alt="Started" className="h-8 w-8 rounded-full" />
-            <span className="text-sm font-semibold text-foreground">Started</span>
+            <img src={startedWordmark} alt="Started" className="h-5" />
           </div>
           <button
             onClick={() => setShowProjectSwitcher(true)}
