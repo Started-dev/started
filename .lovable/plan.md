@@ -1,101 +1,64 @@
 
 
-# Documentation Site for Started.dev
+## Fix: Integrations Install, Panel Resizing, and Console Errors
 
-## Overview
+### Issues Diagnosed
 
-Build a GitBook-style documentation experience as a new `/docs` route within the existing React/Vite application, reusing the app's design system (dark theme, orange accent, Inter/JetBrains Mono fonts, sidebar tokens).
+1. **Install button closes modal without opening InstallModal**: In `IntegrationsPanel.tsx` (line 116-118), clicking "Services" calls `onClose()` and then returns early -- it never sets `subPanel` to `'install'`. The `InstallModal` is rendered conditionally on `subPanel === 'install'` (line 159), but by calling `onClose()` the entire `IntegrationsPanel` unmounts before the modal can appear.
 
-**Important**: The request mentions Next.js, but this project is React + Vite. The docs will be built within the existing stack using React Router, which achieves the same result.
+2. **Terminal/Output panel not vertically resizable**: The `TerminalPanel` uses a fixed CSS height (`h-[280px]` / `h-8`) instead of participating in a `PanelGroup` with a drag handle. This means the user cannot resize it by dragging.
 
-## Architecture
+3. **Console warnings (refs on function components)**: `HooksConfig` and `ProtocolZone` are function components being passed refs without `forwardRef`. These are non-critical warnings but noisy.
 
-The docs system will use a JSON/TypeScript-based content model (not MDX, since this is Vite, not Next.js). Each doc page is a structured object with markdown-like content rendered by custom components.
+4. **`activeRightPanel` type mismatch**: The context types it as `'chat' | 'agent'` but the IDE casts `'timeline'` and `'protocol'` via `as any`. This is fragile and should be expanded.
 
-```text
-/docs                    --> Docs layout with sidebar + content
-/docs/:section           --> Section page (e.g., /docs/introduction)
-/docs/:section/:subsection --> Subsection (e.g., /docs/architecture/storage-zone)
-```
+---
 
-## File Structure
+### Plan
 
-```text
-src/
-  pages/
-    Docs.tsx                    # Main docs page with layout
-  components/docs/
-    DocsLayout.tsx              # 3-column layout (sidebar, content, TOC)
-    DocsSidebar.tsx             # Left navigation with collapsible sections
-    DocsContent.tsx             # Main content renderer
-    DocsTOC.tsx                 # Right "On This Page" table of contents
-    DocsSearch.tsx              # Cmd+K search overlay
-    DocsNav.tsx                 # Top breadcrumb + navigation bar
-    DocsPrevNext.tsx            # Previous/Next page navigation
-    DocsCallout.tsx             # Note, Warning, Tip, Danger callouts
-    DocsCodeBlock.tsx           # Syntax-highlighted code with copy button
-    DocsScrollProgress.tsx      # Subtle scroll progress indicator
-  data/
-    docs-content.ts             # All documentation content structured as data
-    docs-navigation.ts          # Navigation tree definition
-```
+#### 1. Fix Install button in IntegrationsPanel
 
-## Layout Design
+- Remove the early `onClose(); return;` for the `'install'` key
+- Instead, set `subPanel('install')` so the `InstallModal` renders while the panel stays mounted
+- Same pattern already works for `'mcp'`, `'permissions'`, and `'hooks'`
 
-- **Left Sidebar** (~260px): Collapsible sections using existing Sidebar UI components, active section highlighting, scrollable
-- **Main Content** (centered, max-w-3xl): Rendered doc content with proper heading hierarchy, code blocks, callouts
-- **Right TOC** (~200px, hidden on mobile): "On This Page" floating links with active scroll tracking
-- **Top Bar**: Breadcrumbs + search trigger + dark/light toggle
-- **Bottom**: Previous/Next navigation links
+**File**: `src/components/ide/IntegrationsPanel.tsx`
+- Line 116-118: Change from `onClose(); return;` to `setSubPanel('install');`
+- Also fix the Web3 handler (line 110-115) which has the same issue -- it closes the panel and tries `onOpenTxBuilder` via setTimeout. Instead, set `subPanel('web3')` to show the Web3Modal inline (it's already rendered at line 151).
 
-## Styling Approach
+#### 2. Make Terminal/Output vertically resizable
 
-All components will use the existing design tokens:
-- `bg-background`, `bg-card`, `bg-sidebar` for surfaces
-- `text-foreground`, `text-muted-foreground` for text
-- `border-border`, `border-sidebar-border` for borders
-- `text-primary` (orange) for active states and accents
-- `font-mono` for code elements
-- Same scrollbar styling, same spacing patterns
+- In `IDELayout.tsx`, wrap the editor area and terminal in a vertical `PanelGroup direction="vertical"` with a `PanelResizeHandle`
+- Remove the fixed `h-[280px]` from `TerminalPanel` and let it be a `Panel` child
+- The terminal panel will get a `defaultSize` (e.g., 30%) and be resizable via drag handle
 
-## Content Sections (12 pages)
+**Files**: `src/components/ide/IDELayout.tsx`, `src/components/ide/TerminalPanel.tsx`
+- IDELayout: Wrap lines 294-299 in a vertical PanelGroup with two Panels (editor + terminal) and a resize handle between them
+- TerminalPanel: Remove the outer `h-[280px]` / `h-8` fixed heights; use `h-full` so it fills its Panel container. Keep the collapse toggle but use a min-height approach instead of fixed pixel height.
 
-1. **Introduction** - Overview of Started.dev
-2. **Architecture** (with subsections: Storage Zone, Compute Zone, Networking Zone, Proof Zone)
-3. **Snapshots and Merkle Model** - Content-addressed storage
-4. **Runner Mesh** - Distributed compute
-5. **MCP Integrations** - Model Context Protocol servers
-6. **Agent Mode** - Autonomous execution
-7. **Build Attestations** - Verifiable builds
-8. **API Reference** - Edge function APIs
-9. **NBA Policy** - Never-Build-Alone policy engine
-10. **Ship Mode** - Deployment workflow
-11. **Security Model** - Permissions and safety
-12. **FAQ** - Common questions
+#### 3. Expand `activeRightPanel` type
 
-Each page will have coherent placeholder content relevant to the actual app features.
+- In `IDEContext.tsx`, change the type from `'chat' | 'agent'` to `'chat' | 'agent' | 'timeline' | 'protocol'`
+- Remove all `as any` / `as string` casts in `IDELayout.tsx`
 
-## Core Features
+**Files**: `src/contexts/IDEContext.tsx`, `src/components/ide/IDELayout.tsx`
 
-- **Syntax highlighting**: Custom CSS-based highlighting for TypeScript/JSON code blocks (no heavy dependency)
-- **Copy-to-clipboard**: Button on every code block
-- **Callout blocks**: Note (blue), Warning (orange), Tip (green), Danger (red) with icons
-- **Cmd+K search**: Overlay that filters all doc pages by title and content keywords
-- **Scroll progress**: Thin orange bar at the top of the content area
-- **Active TOC tracking**: IntersectionObserver to highlight the current heading
-- **Anchor links**: Click heading to copy link, hash-based navigation
-- **Mobile responsive**: Sidebar becomes a sheet/drawer, TOC hidden, full-width content
+#### 4. Fix forwardRef warnings (minor)
 
-## Technical Details
+- Wrap `HooksConfig` and `ProtocolZone` exports in `React.forwardRef` or ensure they aren't being passed refs inadvertently (likely the latter -- check if they're used inside components that pass refs).
 
-- Add `/docs/*` route to `App.tsx` (public, no auth required)
-- Use `useParams` and `useLocation` for doc routing
-- Scroll tracking via `IntersectionObserver`
-- Search uses simple client-side filtering
-- Framer Motion for subtle page transitions
-- Reuse existing UI primitives: `ScrollArea`, `Sheet`, `Button`, `Separator`, `Collapsible`
+**Files**: `src/components/ide/HooksConfig.tsx`, `src/components/ide/ProtocolZone.tsx`
 
-## New Dependencies
+---
 
-None required. All built with existing packages (React Router, Framer Motion, Lucide icons, Radix UI primitives).
+### Summary of Changes
+
+| File | Change |
+|------|--------|
+| `IntegrationsPanel.tsx` | Fix Install and Web3 click handlers to use `setSubPanel` instead of closing |
+| `IDELayout.tsx` | Wrap editor+terminal in vertical `PanelGroup`; remove `as any` casts |
+| `TerminalPanel.tsx` | Replace fixed heights with flexible `h-full` layout |
+| `IDEContext.tsx` | Expand `activeRightPanel` union type |
+| `HooksConfig.tsx` | Add `forwardRef` or fix ref passing |
+| `ProtocolZone.tsx` | Add `forwardRef` or fix ref passing |
 
