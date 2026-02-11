@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, ArrowLeft, Code2, Globe, Terminal, Boxes, Sparkles, Loader2 } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Code2, Globe, Terminal, Boxes, Sparkles, Loader2, Palette, Layout } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,6 +30,38 @@ const TEMPLATES: Template[] = [
       { path: '/src/main.ts', content: `console.log('Hello from Started!');\n` },
       { path: '/tsconfig.json', content: `{\n  "compilerOptions": {\n    "target": "ES2022",\n    "module": "commonjs",\n    "strict": true,\n    "outDir": "./dist"\n  },\n  "include": ["src/**/*"]\n}\n` },
       { path: '/package.json', content: `{\n  "name": "my-project",\n  "version": "1.0.0",\n  "scripts": {\n    "start": "ts-node src/main.ts",\n    "build": "tsc",\n    "test": "jest"\n  }\n}\n` },
+    ],
+  },
+  {
+    id: 'react',
+    name: 'React App',
+    description: 'React 18 with TypeScript, Vite, and modern tooling.',
+    icon: <Layout className="h-6 w-6" />,
+    files: [
+      { path: '/src/main.tsx', content: `import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\nimport './index.css';\n\nReactDOM.createRoot(document.getElementById('root')!).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>\n);\n` },
+      { path: '/src/App.tsx', content: `export default function App() {\n  return (\n    <div className="min-h-screen flex items-center justify-center bg-gray-950 text-white">\n      <h1 className="text-4xl font-bold">Hello, React!</h1>\n    </div>\n  );\n}\n` },
+      { path: '/src/index.css', content: `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\nbody {\n  margin: 0;\n  font-family: system-ui, sans-serif;\n}\n` },
+      { path: '/index.html', content: `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>React App</title>\n</head>\n<body>\n  <div id="root"></div>\n  <script type="module" src="/src/main.tsx"></script>\n</body>\n</html>\n` },
+      { path: '/package.json', content: `{\n  "name": "react-app",\n  "version": "1.0.0",\n  "type": "module",\n  "scripts": {\n    "dev": "vite",\n    "build": "tsc && vite build",\n    "preview": "vite preview"\n  },\n  "dependencies": {\n    "react": "^18.3.1",\n    "react-dom": "^18.3.1"\n  },\n  "devDependencies": {\n    "@types/react": "^18.3.0",\n    "@types/react-dom": "^18.3.0",\n    "@vitejs/plugin-react": "^4.3.0",\n    "typescript": "^5.5.0",\n    "vite": "^5.4.0"\n  }\n}\n` },
+      { path: '/tsconfig.json', content: `{\n  "compilerOptions": {\n    "target": "ES2022",\n    "module": "ESNext",\n    "moduleResolution": "bundler",\n    "jsx": "react-jsx",\n    "strict": true,\n    "outDir": "./dist"\n  },\n  "include": ["src/**/*"]\n}\n` },
+      { path: '/vite.config.ts', content: `import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n});\n` },
+    ],
+  },
+  {
+    id: 'react-tailwind',
+    name: 'React + Tailwind',
+    description: 'React 18, Tailwind CSS v3, Vite, and TypeScript.',
+    icon: <Palette className="h-6 w-6" />,
+    files: [
+      { path: '/src/main.tsx', content: `import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\nimport './index.css';\n\nReactDOM.createRoot(document.getElementById('root')!).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>\n);\n` },
+      { path: '/src/App.tsx', content: `export default function App() {\n  return (\n    <div className="min-h-screen flex items-center justify-center bg-gray-950 text-white">\n      <div className="text-center space-y-4">\n        <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">\n          Hello, React + Tailwind!\n        </h1>\n        <p className="text-gray-400 text-lg">Start building something amazing.</p>\n        <button className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors">\n          Get Started\n        </button>\n      </div>\n    </div>\n  );\n}\n` },
+      { path: '/src/index.css', content: `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\nbody {\n  margin: 0;\n  font-family: system-ui, sans-serif;\n}\n` },
+      { path: '/index.html', content: `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>React + Tailwind App</title>\n</head>\n<body>\n  <div id="root"></div>\n  <script type="module" src="/src/main.tsx"></script>\n</body>\n</html>\n` },
+      { path: '/package.json', content: `{\n  "name": "react-tailwind-app",\n  "version": "1.0.0",\n  "type": "module",\n  "scripts": {\n    "dev": "vite",\n    "build": "tsc && vite build",\n    "preview": "vite preview"\n  },\n  "dependencies": {\n    "react": "^18.3.1",\n    "react-dom": "^18.3.1"\n  },\n  "devDependencies": {\n    "@types/react": "^18.3.0",\n    "@types/react-dom": "^18.3.0",\n    "@vitejs/plugin-react": "^4.3.0",\n    "autoprefixer": "^10.4.19",\n    "postcss": "^8.4.38",\n    "tailwindcss": "^3.4.4",\n    "typescript": "^5.5.0",\n    "vite": "^5.4.0"\n  }\n}\n` },
+      { path: '/tsconfig.json', content: `{\n  "compilerOptions": {\n    "target": "ES2022",\n    "module": "ESNext",\n    "moduleResolution": "bundler",\n    "jsx": "react-jsx",\n    "strict": true,\n    "outDir": "./dist"\n  },\n  "include": ["src/**/*"]\n}\n` },
+      { path: '/vite.config.ts', content: `import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n});\n` },
+      { path: '/tailwind.config.js', content: `/** @type {import('tailwindcss').Config} */\nexport default {\n  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],\n  theme: { extend: {} },\n  plugins: [],\n};\n` },
+      { path: '/postcss.config.js', content: `export default {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n};\n` },
     ],
   },
   {
@@ -115,7 +147,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               <h2 className="text-lg font-semibold text-foreground">Pick a template</h2>
               <p className="text-sm text-muted-foreground mt-1">Choose a starting point for your project.</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               {TEMPLATES.map(t => (
                 <button
                   key={t.id}
