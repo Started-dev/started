@@ -7,7 +7,7 @@ export default function Hero({
   onCtaPrimary
 }: HeroProps) {
   return <section className="relative w-full min-h-screen flex flex-col justify-center overflow-hidden bg-background">
-      <div className="relative z-10 w-full max-w-[1100px] mx-auto px-8 lg:px-16 py-20">
+      <div className="relative z-10 w-full max-w-[1400px] mx-auto px-8 lg:px-16 py-20">
         {/* Text block — left aligned */}
         <motion.div initial={{
         opacity: 0,
@@ -48,7 +48,7 @@ export default function Hero({
         duration: 0.8,
         delay: 0.3,
         ease: "easeOut"
-      }} className="mt-20 sm:mt-28 w-[calc(100%+6rem)] -mx-12 sm:w-[calc(100%+12rem)] sm:-mx-24 max-w-none">
+      }} className="mt-20 sm:mt-28 w-[calc(100%+10rem)] -mx-20 sm:w-[calc(100%+20rem)] sm:-mx-40 max-w-none">
           <div className="rounded-xl border border-[hsl(38,92%,50%,0.15)] bg-[#131316] shadow-[0_12px_60px_rgba(0,0,0,0.6)] overflow-hidden">
             {/* Title bar */}
             <div className="flex items-center px-4 py-3 border-b border-white/[0.06]">
