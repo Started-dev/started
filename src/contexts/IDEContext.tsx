@@ -10,6 +10,7 @@ import { evaluatePermission, executeToolLocally } from '@/lib/tool-executor';
 import { getRunnerClient, IRunnerClient } from '@/lib/runner-client';
 import { parseUnifiedDiff, applyPatchToContent, extractDiffFromMessage, extractCommandsFromMessage, extractFileBlocksFromMessage } from '@/lib/patch-utils';
 import { streamChat, runCommandRemote, streamAgent, PermissionRequest } from '@/lib/api-client';
+import { generateChatTitle } from '@/lib/chat-title';
 import { triggerEventHooks, isDeployCommand, isErrorExit } from '@/lib/event-hooks';
 import { detectRuntime } from '@/lib/detect-runtime';
 import { RUNTIME_TEMPLATES } from '@/types/runner';
@@ -377,6 +378,9 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
     if (!firstUser) return 'New Chat';
     return firstUser.content.slice(0, 40) + (firstUser.content.length > 40 ? '…' : '');
   };
+
+  // Track whether AI title generation has been triggered for the active conversation
+  const titleGeneratedRef = useRef<Set<string>>(new Set());
 
   // Initialize conversations when project loads
   useEffect(() => {
@@ -915,6 +919,24 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
 
         // 2. Try file blocks (```lang filepath)
         autoCreateFileBlocks(assistantContent);
+
+        // 3. Generate AI title after first assistant reply
+        if (activeConversationId && !titleGeneratedRef.current.has(activeConversationId)) {
+          setChatMessages(prev => {
+            const userMsgs = prev.filter(m => m.role === 'user');
+            const assistantMsgs = prev.filter(m => m.role === 'assistant' && m.content.length > 0 && !m.content.startsWith("Hello! I'm Started"));
+            if (userMsgs.length >= 1 && assistantMsgs.length >= 1) {
+              titleGeneratedRef.current.add(activeConversationId);
+              generateChatTitle(prev).then(title => {
+                convPersistence.saveConversation(activeConversationId, prev, title);
+                setLocalConversations(lc => lc.map(c =>
+                  c.id === activeConversationId ? { ...c, title } : c
+                ));
+              });
+            }
+            return prev;
+          });
+        }
       },
       onError: (error) => {
         setChatMessages(prev =>

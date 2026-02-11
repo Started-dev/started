@@ -178,7 +178,7 @@ export function TerminalPanel() {
   };
 
   return (
-    <div className={`border-t border-border bg-card flex flex-col ${showOutput ? 'h-full' : 'h-8'}`}>
+    <div className="border-t border-border bg-card flex flex-col h-full">
       {/* Header with tabs */}
       <div className="flex items-center justify-between h-8 bg-muted/30 border-b border-border shrink-0">
         <div className="flex items-center h-full overflow-x-auto">

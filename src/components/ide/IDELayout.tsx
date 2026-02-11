@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import {
   Play, MessageSquare, Terminal, Command, Sun, Moon, Brain,
   LogOut, Clock, FolderOpen, ChevronDown, Users, User,
@@ -63,6 +63,7 @@ export function IDELayout() {
   const [showOpenClaw, setShowOpenClaw] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [userPlanKey, setUserPlanKey] = useState<string>('free');
+  const terminalPanelRef = useRef<ImperativePanelHandle>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -298,7 +299,15 @@ export function IDELayout() {
                 </div>
               </Panel>
               <PanelResizeHandle className="h-1 bg-border hover:bg-primary/50 transition-colors cursor-row-resize" />
-              <Panel defaultSize={30} minSize={10}>
+              <Panel
+                ref={terminalPanelRef}
+                defaultSize={30}
+                minSize={8}
+                collapsible
+                collapsedSize={0}
+                onCollapse={() => { if (showOutput) toggleOutput(); }}
+                onExpand={() => { if (!showOutput) toggleOutput(); }}
+              >
                 <TerminalPanel />
               </Panel>
             </PanelGroup>
