@@ -24,17 +24,13 @@ export default function Hero({
           </h1>
 
           <p className="text-base sm:text-lg text-gray-400 max-w-md">
-            Started is y<span className="font-mono">ø</span>ur AI engineer.
+            Started is your AI engineer that runs in your browser.
           </p>
 
           <button onClick={onCtaPrimary} className="mt-2 h-11 px-7 text-sm font-medium rounded-lg bg-white text-[#0d0d0f] hover:opacity-90 transition-opacity duration-200 inline-flex items-center gap-2 w-full sm:w-auto justify-center">
             Get Started
             <span>→</span>
           </button>
-
-          <p className="text-xs text-gray-500 tracking-wide">
-            Runs in y<span className="font-mono">ø</span>ur br<span className="font-mono">ø</span>wser.
-          </p>
         </motion.div>
 
         {/* IDE Screenshot */}
