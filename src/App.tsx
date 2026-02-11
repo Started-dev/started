@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import UserSettings from "./pages/UserSettings";
+import Docs from "./pages/Docs";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -34,6 +35,9 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/docs" element={<Docs />} />
+            <Route path="/docs/:section" element={<Docs />} />
+            <Route path="/docs/:section/:subsection" element={<Docs />} />
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><UserSettings /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
