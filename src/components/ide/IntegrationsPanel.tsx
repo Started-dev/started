@@ -5,9 +5,10 @@ import { PermissionRulesManager } from './PermissionRulesManager';
 import { Web3Modal } from './Web3Modal';
 import { InstallModal } from './InstallModal';
 import { HooksConfig } from './HooksConfig';
+import { OpenClawPanel } from './OpenClawPanel';
 import type { MCPServer, Hook, WebhookSecret, HookExecution } from '@/types/agent';
 
-type SubPanel = 'mcp' | 'web3' | 'permissions' | 'hooks' | 'install' | null;
+type SubPanel = 'mcp' | 'web3' | 'permissions' | 'hooks' | 'install' | 'openclaw' | null;
 
 interface IntegrationsPanelProps {
   onClose: () => void;
@@ -57,6 +58,9 @@ export function IntegrationsPanel({
   }
   if (subPanel === 'permissions') {
     return <PermissionRulesManager onClose={() => setSubPanel(null)} />;
+  }
+  if (subPanel === 'openclaw') {
+    return <OpenClawPanel onClose={() => setSubPanel(null)} />;
   }
   if (subPanel === 'hooks') {
     return (
@@ -154,7 +158,7 @@ export function IntegrationsPanel({
         <InstallModal
           open={true}
           onClose={() => setSubPanel(null)}
-          onOpenOpenClaw={() => { /* handled by install modal */ }}
+          onOpenOpenClaw={() => setSubPanel('openclaw')}
         />
       )}
     </>
