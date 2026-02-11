@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, forwardRef } from 'react';
 import { Anchor, X, Plus, Check, Trash2, Copy, RefreshCw, Zap, Globe, Bell, Send } from 'lucide-react';
 import { Hook, HookEvent, HookAction, WebhookSecret, HookExecution } from '@/types/agent';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -19,12 +19,12 @@ interface HooksConfigProps {
   projectId?: string;
 }
 
-export function HooksConfig({
+export const HooksConfig = forwardRef<HTMLDivElement, HooksConfigProps>(function HooksConfig({
   hooks, onToggleHook, onAddHook, onRemoveHook, onClose,
   webhookSecrets = [], executions = [],
   onGenerateSecret, onDeleteSecret, onRefreshExecutions,
   webhookBaseUrl, projectId,
-}: HooksConfigProps) {
+}, ref) {
   const [showAdd, setShowAdd] = useState(false);
   const [addTab, setAddTab] = useState<'agent' | 'webhook' | 'event'>('agent');
   const [newEvent, setNewEvent] = useState<HookEvent>('PreToolUse');
@@ -199,7 +199,7 @@ export function HooksConfig({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+    <div ref={ref} className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
       <div className="fixed inset-0 bg-background/60 backdrop-blur-sm" />
       <div
         className="relative w-full max-w-lg bg-popover border border-border rounded-lg shadow-2xl overflow-hidden animate-fade-in"
@@ -358,4 +358,4 @@ export function HooksConfig({
       </div>
     </div>
   );
-}
+});

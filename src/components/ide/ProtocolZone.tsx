@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, forwardRef } from 'react';
 import {
   Zap, Search, Wallet, Server, ArrowRight, Loader2,
   Shield, Eye, ExternalLink,
@@ -15,7 +15,7 @@ interface ProtocolResult {
   meta?: { latency_ms: number };
 }
 
-export function ProtocolZone() {
+export const ProtocolZone = forwardRef<HTMLDivElement>(function ProtocolZone(_props, ref) {
   const { project } = useIDE();
   const [chain, setChain] = useState<Chain>('evm');
   const [address, setAddress] = useState('');
@@ -88,7 +88,7 @@ export function ProtocolZone() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-card overflow-hidden">
+    <div ref={ref} className="h-full flex flex-col bg-card overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2">
@@ -232,4 +232,4 @@ export function ProtocolZone() {
       </div>
     </div>
   );
-}
+});
