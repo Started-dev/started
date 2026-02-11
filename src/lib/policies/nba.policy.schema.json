@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://started.dev/schemas/nba.policy.schema.json",
+  "title": "Started.dev Next Best Action Policy",
+  "type": "object",
+  "required": ["version", "max_actions", "confidence_thresholds", "defaults", "weights", "gates", "suggestion_memory", "action_overrides"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "max_actions": {
+      "type": "object",
+      "required": ["primary", "secondary"],
+      "additionalProperties": false,
+      "properties": {
+        "primary": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "secondary": { "type": "integer", "minimum": 0, "maximum": 5 }
+      }
+    },
+    "confidence_thresholds": {
+      "type": "object",
+      "required": ["high", "medium"],
+      "additionalProperties": false,
+      "properties": {
+        "high": { "type": "number", "minimum": 0, "maximum": 1 },
+        "medium": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "required": ["prefer_preview_before_apply", "auto_attach_context", "never_ship_without_verification"],
+      "additionalProperties": false,
+      "properties": {
+        "prefer_preview_before_apply": { "type": "boolean" },
+        "auto_attach_context": {
+          "type": "object",
+          "required": ["errors_last_run", "diff_current", "active_file"],
+          "additionalProperties": false,
+          "properties": {
+            "errors_last_run": { "type": "boolean" },
+            "diff_current": { "type": "boolean" },
+            "active_file": { "type": "boolean" }
+          }
+        },
+        "never_ship_without_verification": { "type": "boolean" }
+      }
+    },
+    "weights": {
+      "type": "object",
+      "required": ["urgency", "verification_bonus", "momentum_bonus", "safety_penalty", "friction_penalty"],
+      "additionalProperties": false,
+      "properties": {
+        "urgency": { "$ref": "#/$defs/weightMap" },
+        "verification_bonus": { "$ref": "#/$defs/weightMap" },
+        "momentum_bonus": { "$ref": "#/$defs/weightMap" },
+        "safety_penalty": { "$ref": "#/$defs/weightMap" },
+        "friction_penalty": { "$ref": "#/$defs/weightMap" }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "required": ["hard_deny_command_patterns", "ship_requires"],
+      "additionalProperties": false,
+      "properties": {
+        "hard_deny_command_patterns": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 200,
+          "items": { "type": "string", "minLength": 1, "maxLength": 2000 }
+        },
+        "ship_requires": {
+          "type": "object",
+          "required": ["attestation", "tests_or_build"],
+          "additionalProperties": false,
+          "properties": {
+            "attestation": { "type": "boolean" },
+            "tests_or_build": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "suggestion_memory": {
+      "type": "object",
+      "required": ["ignore_decay_days", "max_ignore_count_before_suppress"],
+      "additionalProperties": false,
+      "properties": {
+        "ignore_decay_days": { "type": "integer", "minimum": 0, "maximum": 365 },
+        "max_ignore_count_before_suppress": { "type": "integer", "minimum": 0, "maximum": 20 }
+      }
+    },
+    "action_overrides": {
+      "type": "object",
+      "required": ["when_last_run_failed", "when_patch_ready", "when_agent_running"],
+      "additionalProperties": false,
+      "properties": {
+        "when_last_run_failed": {
+          "type": "object",
+          "required": ["force_include", "suppress"],
+          "additionalProperties": false,
+          "properties": {
+            "force_include": { "$ref": "#/$defs/actionKeyArray" },
+            "suppress": { "$ref": "#/$defs/actionKeyArray" }
+          }
+        },
+        "when_patch_ready": {
+          "type": "object",
+          "required": ["primary_if_user_did_not_explicitly_say_apply"],
+          "additionalProperties": false,
+          "properties": {
+            "primary_if_user_did_not_explicitly_say_apply": { "$ref": "#/$defs/actionKey" }
+          }
+        },
+        "when_agent_running": {
+          "type": "object",
+          "required": ["primary", "suppress"],
+          "additionalProperties": false,
+          "properties": {
+            "primary": { "$ref": "#/$defs/actionKey" },
+            "suppress": { "$ref": "#/$defs/actionKeyArray" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "weightMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[a-zA-Z0-9_.-]+$"
+      },
+      "patternProperties": {
+        "^[a-zA-Z0-9_.-]+$": { "type": "number", "minimum": 0, "maximum": 1000 }
+      }
+    },
+    "actionKey": {
+      "type": "string",
+      "enum": [
+        "preview_diff",
+        "apply_patch",
+        "apply_and_run",
+        "run_tests",
+        "run_build",
+        "rerun_last",
+        "explain_error",
+        "fix_or_plan",
+        "continue_agent",
+        "start_agent",
+        "pause_agent",
+        "cancel_agent",
+        "generate_attestation",
+        "replay_attestation",
+        "create_pr",
+        "deploy"
+      ]
+    },
+    "actionKeyArray": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/actionKey" }
+    }
+  }
+}
