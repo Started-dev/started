@@ -16,6 +16,8 @@ export interface OpenTab {
   isModified: boolean;
 }
 
+export type RunnerStatus = 'connected' | 'disconnected' | 'busy' | 'misconfigured';
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -27,6 +29,28 @@ export interface ChatMessage {
     state: string;
     action: string;
     reason: string;
+  };
+  /** Distinguishes structured card types from plain messages */
+  cardType?: 'action' | 'result' | 'suggestion';
+  /** For ACTION_CARD */
+  actionData?: {
+    actionType: string;
+    command: string;
+    status: 'queued' | 'running' | 'success' | 'failed';
+    timestamp: Date;
+  };
+  /** For RESULT_CARD */
+  resultData?: {
+    exitCode: number;
+    logs: string;
+    errorSummary?: string;
+    durationMs?: number;
+    runnerUnavailable?: boolean;
+  };
+  /** For SUGGESTION_CARD */
+  suggestionData?: {
+    primary: { label: string; action: string };
+    secondary?: Array<{ label: string; action: string }>;
   };
 }
 
@@ -46,6 +70,7 @@ export interface RunResult {
   durationMs?: number;
   sessionId?: string;
   timestamp: Date;
+  runnerUnavailable?: boolean;
 }
 
 export interface Conversation {

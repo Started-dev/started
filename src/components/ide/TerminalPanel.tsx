@@ -13,7 +13,7 @@ interface TerminalTab {
 }
 
 export function TerminalPanel() {
-  const { runs, runCommand, showOutput, toggleOutput, runnerSession, killRunningProcess, sendErrorsToChat, project, setRuntimeType, pendingPermission, approvePermission, denyPermission, alwaysAllowPermission } = useIDE();
+  const { runs, runCommand, showOutput, toggleOutput, runnerSession, killRunningProcess, sendErrorsToChat, project, setRuntimeType, pendingPermission, approvePermission, denyPermission, alwaysAllowPermission, runnerStatus } = useIDE();
   const [runtimeOpen, setRuntimeOpen] = useState(false);
   const runtimeRef = useRef<HTMLDivElement>(null);
 
@@ -227,9 +227,17 @@ export function TerminalPanel() {
 
         <div className="flex items-center gap-1 px-2 shrink-0">
           {/* Runner status badge */}
-          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-sm bg-muted text-muted-foreground font-mono">
-            <span className="h-1.5 w-1.5 rounded-full bg-ide-success shrink-0" />
-            Edge Runner
+          <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-sm font-mono ${
+            runnerStatus === 'connected' ? 'bg-muted text-muted-foreground' :
+            runnerStatus === 'busy' ? 'bg-ide-warning/10 text-ide-warning' :
+            'bg-ide-error/10 text-ide-error'
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+              runnerStatus === 'connected' ? 'bg-ide-success' :
+              runnerStatus === 'busy' ? 'bg-ide-warning' :
+              'bg-muted-foreground'
+            }`} />
+            {runnerStatus === 'connected' ? 'Runner' : runnerStatus === 'disconnected' ? 'No Runner' : runnerStatus}
           </span>
           {hasErrors && activeTab === 'output' && (
             <button
