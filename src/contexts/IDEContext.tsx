@@ -264,8 +264,8 @@ interface IDEContextType {
   refreshHookExecutions: () => void;
   mcpServers: MCPServer[];
   toggleMCPServer: (id: string) => void;
-  activeRightPanel: 'chat' | 'agent';
-  setActiveRightPanel: (panel: 'chat' | 'agent') => void;
+  activeRightPanel: 'chat' | 'agent' | 'timeline' | 'protocol';
+  setActiveRightPanel: (panel: 'chat' | 'agent' | 'timeline' | 'protocol') => void;
   snapshots: Snapshot[];
   snapshotsLoading: boolean;
   loadSnapshots: () => void;
@@ -474,7 +474,7 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   // Hooks state (DB-backed)
   const projectHooks = useProjectHooks(projectId);
   const [mcpServers, setMcpServers] = useState<MCPServer[]>(BUILTIN_MCP_SERVERS);
-  const [activeRightPanel, setActiveRightPanel] = useState<'chat' | 'agent'>('chat');
+  const [activeRightPanel, setActiveRightPanel] = useState<'chat' | 'agent' | 'timeline' | 'protocol'>('chat');
 
   const toggleTheme = useCallback(() => {
     setTheme(prev => {
