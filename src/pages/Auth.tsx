@@ -55,13 +55,13 @@ export default function Auth() {
             href="https://docs.started.dev"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200"
+            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 px-3 py-1.5 rounded-lg hover:bg-white/[0.06] hover:shadow-[0_0_12px_hsl(38_92%_50%/0.1)]"
           >
             Docs
           </a>
           <button
             onClick={() => { setShowAuth(true); setIsSignUp(false); }}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-200"
+            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 px-3 py-1.5 rounded-lg hover:bg-white/[0.06] hover:shadow-[0_0_12px_hsl(38_92%_50%/0.1)]"
           >
             Sign In
           </button>
