@@ -7,7 +7,7 @@ type HeroProps = {
 
 export default function Hero({ onCtaPrimary }: HeroProps) {
   return (
-    <section className="relative w-full min-h-screen flex flex-col justify-center overflow-hidden bg-[#0d0d0f]">
+    <section className="relative w-full min-h-screen flex flex-col justify-center overflow-hidden bg-background">
       <div className="relative z-10 w-full max-w-[1100px] mx-auto px-8 lg:px-16 py-20">
         {/* Text block — left aligned */}
         <motion.div
