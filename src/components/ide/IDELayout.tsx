@@ -214,8 +214,8 @@ export function IDELayout() {
               <NavIconButton
                 icon={<Clock className="h-3.5 w-3.5" />}
                 tooltip="Timeline"
-                onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('timeline' as any); }}
-                active={showChat && (activeRightPanel as string) === 'timeline'}
+                onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('timeline'); }}
+                active={showChat && activeRightPanel === 'timeline'}
               />
               <NavIconButton
                 icon={<Activity className="h-3.5 w-3.5" />}
@@ -238,8 +238,8 @@ export function IDELayout() {
               <NavIconButton
                 icon={<Globe2 className="h-3.5 w-3.5" />}
                 tooltip="Protocol Zone"
-                onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('protocol' as any); }}
-                active={showChat && (activeRightPanel as string) === 'protocol'}
+                onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('protocol'); }}
+                active={showChat && activeRightPanel === 'protocol'}
               />
               <NavIconButton
                 icon={<Users className="h-3.5 w-3.5" />}
@@ -291,12 +291,17 @@ export function IDELayout() {
           )}
 
           <Panel defaultSize={showChat ? (focusMode ? 70 : 55) : (focusMode ? 100 : 85)} minSize={30}>
-            <div className="h-full flex flex-col">
-              <div className="flex-1 min-h-0">
-                <EditorPane />
-              </div>
-              <TerminalPanel />
-            </div>
+            <PanelGroup direction="vertical">
+              <Panel defaultSize={70} minSize={20}>
+                <div className="h-full min-h-0">
+                  <EditorPane />
+                </div>
+              </Panel>
+              <PanelResizeHandle className="h-1 bg-border hover:bg-primary/50 transition-colors cursor-row-resize" />
+              <Panel defaultSize={30} minSize={10}>
+                <TerminalPanel />
+              </Panel>
+            </PanelGroup>
           </Panel>
 
           {showChat && (
@@ -305,9 +310,9 @@ export function IDELayout() {
               <Panel defaultSize={30} minSize={20} maxSize={45}>
                 {activeRightPanel === 'chat' ? (
                   <ChatPanel />
-                ) : (activeRightPanel as string) === 'timeline' ? (
+                ) : activeRightPanel === 'timeline' ? (
                   <EventTimeline />
-                ) : (activeRightPanel as string) === 'protocol' ? (
+                ) : activeRightPanel === 'protocol' ? (
                   <ProtocolZone />
                 ) : (
                   <AgentTimeline

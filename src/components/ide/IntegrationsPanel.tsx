@@ -107,14 +107,8 @@ export function IntegrationsPanel({
                 <button
                   key={key}
                   onClick={() => {
-                    if (key === 'web3') {
-                      onClose();
-                      // Small delay to avoid z-index conflict
-                      setTimeout(() => onOpenTxBuilder(), 100);
-                      return;
-                    }
-                    if (key === 'install') {
-                      onClose();
+                    if (key === 'web3' || key === 'install') {
+                      setSubPanel(key);
                       return;
                     }
                     setSubPanel(key);
