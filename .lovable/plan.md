@@ -1,28 +1,26 @@
 
 
-## Remove Pipeline + Add Mouse-Following Glow Background
+## Plan: Navbar Glass Cleanup, Remove Tag, and Stylized "o" Characters
 
-### What changes
-1. **Remove the static pipeline SVG** -- Delete the `StaticPipeline` component and its container div, plus the faint horizontal rule accent line from `HeroBackground`.
+### 1. Optimize the Glass Navbar
+The current navbar uses `backdrop-blur-xl` and a `before:` pseudo-element gradient overlay which can cause rendering artifacts (patching/quality issues) on some browsers. The fix:
+- Replace `backdrop-blur-xl` with `backdrop-blur-md` (lighter blur, fewer artifacts)
+- Remove the `before:` pseudo-element gradient entirely (the main source of layering/patching issues)
+- Keep the subtle border, shadow, and semi-transparent background for the glass feel
+- Result: cleaner glass effect with better rendering performance
 
-2. **Add an interactive mouse-tracking radial glow** -- Inspired by the nitroacc.xyz site, which has a soft ambient light that follows the cursor. The implementation will:
-   - Track mouse position via `onMouseMove` on the hero section
-   - Render a large, soft radial gradient circle (using the primary orange accent at very low opacity) that smoothly follows the cursor with CSS `transition` for a laggy/smooth feel
-   - Keep the existing dot grid and base background intact
-   - Keep the bottom fade gradient
+### 2. Remove "Deterministic build runtime" Tag
+Delete the second `<span>` inside the micro-labels section of `Hero.tsx` that displays "Deterministic build runtime".
 
-3. **No UX changes** -- All buttons, CTAs, modal auth flow, nav bar remain untouched.
+### 3. Stylized "o" with Slash (ø) in Hero Headline
+Replace all lowercase "o" characters in the hero headline text with the Unicode character "ø" (o-with-slash), rendered in a monospace font to give a code/terminal aesthetic. This will be done by modifying the `renderTitleWithAccent` function to post-process each text span, wrapping every "o" in a `<span className="font-mono">ø</span>`. The "AI agents" accent span will also receive this treatment.
 
 ### Technical Details
 
+**File: `src/pages/Auth.tsx`** (line 49)
+- Simplify the `<nav>` className: remove `before:*` classes, change `backdrop-blur-xl` to `backdrop-blur-md`
+
 **File: `src/components/Hero.tsx`**
-
-- Add `useState` for mouse `x, y` coordinates
-- Add `onMouseMove` handler on the outer `<section>` element to capture cursor position
-- In `HeroBackground`, accept mouse coordinates as props and render a `div` with a `radial-gradient` centered at the mouse position, using `transition: background 0.3s ease` for the smooth trailing effect
-- Remove `StaticPipeline` function entirely (~40 lines)
-- Remove the horizontal rule div and the `ACCENT` constant
-- Keep: base background, toned-down vignette, dot grid, bottom fade
-
-The glow will be a subtle warm orange radial gradient (matching the brand accent `hsl(38 92% 50%)`) at around 4-6% opacity, roughly 600px radius, creating a soft spotlight effect that follows the mouse without being distracting.
+- Lines 38-41: Remove the "Deterministic build runtime" span entirely
+- Lines 78-100: Update `renderTitleWithAccent` to replace "o" characters with a monospace-styled "ø" character in all rendered text spans
 
