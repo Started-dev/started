@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { useState } from 'react';
 
 export const AVAILABLE_MODELS = [
   { id: 'started/started-ai', label: 'StartedAI', desc: 'Token-efficient default', provider: 'started' },
@@ -33,46 +34,38 @@ interface ModelSelectorProps {
 export function ModelSelector({ value, onChange }: ModelSelectorProps) {
   const current = AVAILABLE_MODELS.find(m => m.id === value) || AVAILABLE_MODELS[0];
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
 
   return (
-    <div className="relative" ref={containerRef}>
-      <button
-        onClick={() => setOpen(prev => !prev)}
-        className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-sm bg-muted text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-sm bg-muted text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+        >
+          <span className="font-medium">{current.label}</span>
+          <ChevronDown className="h-2.5 w-2.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="start"
+        sideOffset={4}
+        className="min-w-[260px] max-h-[280px] overflow-y-auto p-1"
       >
-        <span className="font-medium">{current.label}</span>
-        <ChevronDown className="h-2.5 w-2.5" />
-      </button>
-      {open && (
-        <div className="absolute bottom-full left-0 mb-1 z-50 bg-popover border border-border rounded-md shadow-lg min-w-[260px] max-h-[320px] overflow-y-auto py-1">
-          {AVAILABLE_MODELS.map(m => (
-            <button
-              key={m.id}
-              onClick={() => { onChange(m.id); setOpen(false); }}
-              className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-accent transition-colors flex items-center gap-1.5 ${
-                m.id === value ? 'bg-primary/10 text-primary' : 'text-foreground'
-              }`}
-            >
-              <span className="font-medium shrink-0">{m.label}</span>
-              {m.id === 'started/started-ai' && <span className="text-[9px] px-1 py-0.5 bg-primary/15 text-primary rounded-sm font-semibold shrink-0">default</span>}
-              <span className={`text-[9px] px-1 py-0.5 rounded-sm shrink-0 ${PROVIDER_COLORS[m.provider] || ''}`}>{m.provider}</span>
-              <span className="text-muted-foreground truncate">— {m.desc}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+        {AVAILABLE_MODELS.map(m => (
+          <button
+            key={m.id}
+            onClick={() => { onChange(m.id); setOpen(false); }}
+            className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-accent transition-colors flex items-center gap-1.5 rounded-sm ${
+              m.id === value ? 'bg-primary/10 text-primary' : 'text-foreground'
+            }`}
+          >
+            <span className="font-medium shrink-0">{m.label}</span>
+            {m.id === 'started/started-ai' && <span className="text-[9px] px-1 py-0.5 bg-primary/15 text-primary rounded-sm font-semibold shrink-0">default</span>}
+            <span className={`text-[9px] px-1 py-0.5 rounded-sm shrink-0 ${PROVIDER_COLORS[m.provider] || ''}`}>{m.provider}</span>
+            <span className="text-muted-foreground truncate">— {m.desc}</span>
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
   );
 }

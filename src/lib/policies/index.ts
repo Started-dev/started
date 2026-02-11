@@ -16,6 +16,13 @@ export type { ActionKey, ConfidenceLevel, RiskLevel, NBASignals, ScoredAction, N
 export { AGENT_RETROSPECTIVE_PROMPT, buildRetrospectiveInput } from "./retrospective";
 export { SHIP_MODE_PROMPT } from "./ship-mode";
 
+export { validateNBAPolicy, nbaPolicySchema, actionKeySchema } from "./validate-policy";
+export type { ValidatedNBAPolicy } from "./validate-policy";
+
 // Default policy (importable as JSON)
 import defaultPolicy from "./nba.policy.json";
 export { defaultPolicy };
+
+// JSON Schema (for server-side / edge function validation)
+import nbaPolicyJsonSchema from "./nba.policy.schema.json";
+export { nbaPolicyJsonSchema };
