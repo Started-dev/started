@@ -1,35 +1,40 @@
 
 
-# Remove All Lovable References -- Rebrand to Started.dev
+# Fix: MoltBot Install — Component Disappears
 
-## Scope
+## Root Cause
 
-Every user-facing and code-level reference to "Lovable" will be replaced with "Started" equivalents. The underlying gateway URL (`ai.gateway.lovable.dev`) remains as-is since it's an external API endpoint, but all variable names, comments, and labels will be rebranded.
+In `IntegrationsPanel.tsx` (line 157), the `onOpenOpenClaw` callback passed to `InstallModal` is an empty no-op:
 
-## Changes
+```typescript
+onOpenOpenClaw={() => { /* handled by install modal */ }}
+```
 
-### 1. `vite.config.ts` -- Remove lovable-tagger
-- Remove the `lovable-tagger` import and its usage in the plugins array
-- This is a Lovable-specific dev tool that tags components; not needed for Started
+When you click "OpenClaw / MoltBot" in the Install Services modal:
+1. `onClose()` fires -- closes the InstallModal
+2. `onOpenOpenClaw()` fires -- does nothing
 
-### 2. `supabase/functions/started/index.ts` -- Rebrand gateway references
-- Rename all comments from "Lovable Gateway" to "Started Gateway"
-- Rename internal variable references from `LOVABLE_API_KEY` to `STARTED_API_KEY` (with fallback to `LOVABLE_API_KEY` for backward compatibility)
-- Update comment on line 355 from "Lovable Gateway" to "Started Gateway"
+Result: both dialogs close, nothing opens. The component "disappears."
 
-### 3. `supabase/functions/agent-run/index.ts` -- Same rebranding
-- Rename comment "Call Lovable Gateway" to "Call Started Gateway"
-- Rename `LOVABLE_API_KEY` references to `STARTED_API_KEY` (with fallback)
+## Fix
 
-### 4. `src/components/ide/OpenClawPanel.tsx` -- Rebrand gateway label
-- Change the string `'lovable-gateway'` to `'started-gateway'` (line 74)
+Add a new sub-panel state value `'openclaw'` and wire it up:
 
-### 5. `package.json` -- Remove lovable-tagger dependency
-- Remove `lovable-tagger` from devDependencies since it's no longer used
+### `src/components/ide/IntegrationsPanel.tsx`
 
-## Technical Notes
+1. Add `'openclaw'` to the `SubPanel` type union
+2. Import `OpenClawPanel`
+3. Add a render branch: when `subPanel === 'openclaw'`, render `<OpenClawPanel onClose={() => setSubPanel(null)} />`
+4. Change the `onOpenOpenClaw` prop from `() => {}` to `() => setSubPanel('openclaw')`
 
-- The actual gateway endpoint URL (`https://ai.gateway.lovable.dev/...`) stays unchanged because it's the real API server. Only labels, comments, and variable names change.
-- Environment variable fallback: code will check `STARTED_API_KEY` first, then fall back to `LOVABLE_API_KEY` so nothing breaks during transition.
-- The `src/integrations/supabase/client.ts` file is auto-generated and cannot be edited (this is infrastructure, not branding).
+### Technical Detail
 
+```text
+Before:
+  User clicks MoltBot -> onClose() + onOpenOpenClaw() (no-op) -> nothing
+
+After:
+  User clicks MoltBot -> onClose() + onOpenOpenClaw() -> setSubPanel('openclaw') -> OpenClawPanel renders
+```
+
+This is a 4-line fix in a single file.
