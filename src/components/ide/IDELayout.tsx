@@ -304,7 +304,7 @@ export function IDELayout() {
                 defaultSize={30}
                 minSize={8}
                 collapsible
-                collapsedSize={0}
+                collapsedSize={4}
                 onCollapse={() => { if (showOutput) toggleOutput(); }}
                 onExpand={() => { if (!showOutput) toggleOutput(); }}
               >
