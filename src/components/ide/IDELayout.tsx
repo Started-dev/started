@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { Play, MessageSquare, Terminal, Command, Sun, Moon, BookOpen, Brain, Plug, Anchor, LogOut, Clock, FolderOpen, ChevronDown, Users, Zap, User, Shield, Rocket, Cloud, Download, Activity, Globe2 } from 'lucide-react';
-import startedLogo from '@/assets/started-logo.png';
+import {
+  Play, MessageSquare, Terminal, Command, Sun, Moon, Brain,
+  LogOut, Clock, FolderOpen, ChevronDown, Users, User,
+  Rocket, Activity, Globe2, Plug, GitBranch, Eye, EyeOff,
+} from 'lucide-react';
 import startedWordmark from '@/assets/started-wordmark.svg';
 import { FileTree } from './FileTree';
 import { EditorPane } from './EditorPane';
@@ -10,25 +13,23 @@ import { ChatPanel } from './ChatPanel';
 import { TerminalPanel } from './TerminalPanel';
 import { CommandPalette } from './CommandPalette';
 import { AgentTimeline } from './AgentTimeline';
-import { MCPConfig } from './MCPConfig';
-import { HooksConfig } from './HooksConfig';
 import { SnapshotBrowser } from './SnapshotBrowser';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { CollaborationPanel } from './CollaborationPanel';
 import { TransactionBuilder } from './TransactionBuilder';
 import { PresenceAvatars } from './PresenceAvatars';
-import { PermissionRulesManager } from './PermissionRulesManager';
 import { CICDPanel } from './CICDPanel';
 import { OpenClawPanel } from './OpenClawPanel';
-import { Web3Modal } from './Web3Modal';
 import { EventTimeline } from './EventTimeline';
 import { ProtocolZone } from './ProtocolZone';
-import { InstallModal } from './InstallModal';
+import { IntegrationsPanel } from './IntegrationsPanel';
+import { NavIconButton } from './NavIconButton';
 import { useIDE } from '@/contexts/IDEContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOpenClawEvents } from '@/hooks/use-openclaw-events';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 export function IDELayout() {
   const navigate = useNavigate();
@@ -47,23 +48,18 @@ export function IDELayout() {
   } = useIDE();
   const { signOut, user } = useAuth();
 
-  // Subscribe to OpenClaw real-time webhook events
   useOpenClawEvents(project?.id);
 
-  const [showMCP, setShowMCP] = useState(false);
-  const [showHooks, setShowHooks] = useState(false);
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [showProjectSwitcher, setShowProjectSwitcher] = useState(false);
   const [showCollab, setShowCollab] = useState(false);
   const [showTxBuilder, setShowTxBuilder] = useState(false);
-  const [showWeb3, setShowWeb3] = useState(false);
-  const [showInstall, setShowInstall] = useState(false);
-  const [showPermissions, setShowPermissions] = useState(false);
+  const [showIntegrations, setShowIntegrations] = useState(false);
   const [showCICD, setShowCICD] = useState(false);
   const [showOpenClaw, setShowOpenClaw] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
   const [userPlanKey, setUserPlanKey] = useState<string>('free');
 
-  // Fetch user plan for feature gating
   useEffect(() => {
     if (!user?.id) return;
     supabase.from('api_usage_ledger').select('plan_key').eq('owner_id', user.id)
@@ -107,155 +103,84 @@ export function IDELayout() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggleChat, toggleOutput, runCommand, sendMessage, selectedText]);
 
-  const openProjectBrief = () => {
-    const startedFile = files.find(f => f.path === '/STARTED.md');
-    if (startedFile) openFile(startedFile.id);
-  };
-
   const isAgentActive = agentRun?.status === 'running' || agentRun?.status === 'queued';
+  const activeMCP = mcpServers.filter(s => s.enabled).length;
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
-      {/* Title bar */}
-      <div className="flex items-center justify-between px-4 h-10 bg-ide-panel-header border-b border-border shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <img src={startedWordmark} alt="Started" className="h-7" />
-          </div>
+      {/* ─── Top Navigation ─── */}
+      <div className="flex items-center justify-between px-3 h-11 bg-ide-panel-header border-b border-border shrink-0">
+        {/* LEFT: Logo + Project + Branch + ⌘K */}
+        <div className="flex items-center gap-2.5">
+          <img src={startedWordmark} alt="Started" className="h-6 opacity-90" />
+
+          <div className="w-px h-5 bg-border" />
+
           <button
             onClick={() => setShowProjectSwitcher(true)}
-            className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground font-mono hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground font-mono hover:text-foreground hover:bg-accent/40 rounded-md transition-all duration-150"
             title="Switch project"
           >
             <FolderOpen className="h-3 w-3" />
-            {project.name}
-            <ChevronDown className="h-3 w-3" />
+            <span className="max-w-[120px] truncate">{project.name}</span>
+            <ChevronDown className="h-3 w-3 opacity-50" />
           </button>
+
+          <button
+            onClick={() => { setShowSnapshots(true); loadSnapshots(); }}
+            className="flex items-center gap-1 px-1.5 py-1 text-xs text-muted-foreground/60 font-mono hover:text-foreground hover:bg-accent/40 rounded-md transition-all duration-150"
+            title="Snapshots"
+          >
+            <GitBranch className="h-3 w-3" />
+            <span className="hidden lg:inline">main</span>
+            <ChevronDown className="h-2.5 w-2.5 opacity-50" />
+          </button>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => {
+                  const e = new KeyboardEvent('keydown', { key: 'k', metaKey: true });
+                  window.dispatchEvent(e);
+                }}
+                className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground/50 hover:text-foreground bg-accent/20 hover:bg-accent/40 rounded-md transition-all duration-150 border border-border/50"
+              >
+                <Command className="h-3 w-3" />
+                <span className="hidden sm:inline text-[10px]">⌘K</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">Command Palette</TooltipContent>
+          </Tooltip>
+
           {isAgentActive && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-ide-warning/15 text-ide-warning rounded-sm animate-pulse">
+            <span className="text-[10px] px-1.5 py-0.5 bg-ide-warning/15 text-ide-warning rounded-md animate-pulse font-medium">
               Agent running
             </span>
           )}
         </div>
 
+        {/* CENTER: breathing room — empty */}
+        <div className="flex-1" />
+
+        {/* RIGHT: Primary actions + Utility icons */}
         <div className="flex items-center gap-1">
-          <button
-            onClick={openProjectBrief}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
-            title="Edit STARTED.md (Project Brief)"
-          >
-            <BookOpen className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Brief</span>
-          </button>
-          <button
-            onClick={() => setShowHooks(true)}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
-            title="Configure Hooks"
-          >
-            <Anchor className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Hooks</span>
-          </button>
-          <button
-            onClick={() => { setShowSnapshots(true); loadSnapshots(); }}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
-            title="File Snapshots"
-          >
-            <Clock className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Snapshots</span>
-          </button>
-          <button
-            onClick={() => setShowPermissions(true)}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
-            title="Permission Rules"
-          >
-            <Shield className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Permissions</span>
-          </button>
-          <button
-            onClick={() => setShowMCP(true)}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
-            title="MCP Servers"
-          >
-            <Plug className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">MCP</span>
-          </button>
-          <button
-            onClick={() => setShowWeb3(true)}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
-            title="Web3 Integrations"
-          >
-            <Zap className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Web3</span>
-          </button>
-          <button
-            onClick={() => setShowCICD(true)}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
-            title="CI/CD Pipeline"
-          >
-            <Rocket className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">CI/CD</span>
-          </button>
-          <button
-            onClick={() => setShowInstall(true)}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
-            title="Install Services"
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Install</span>
-          </button>
-          <PresenceAvatars users={presenceUsers} onClick={handleCollabClick} />
-          <button
-            onClick={handleCollabClick}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
-            title="Collaboration"
-          >
-            <Users className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Collab</span>
-          </button>
-          <div className="w-px h-4 bg-border mx-1" />
+          {/* ── Primary: Run ── */}
           <button
             onClick={() => runCommand('npm start')}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-ide-success/10 text-ide-success rounded-sm hover:bg-ide-success/20 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-ide-success/15 text-ide-success rounded-md hover:bg-ide-success/25 transition-all duration-150 border border-ide-success/20"
           >
             <Play className="h-3 w-3" />
             Run
           </button>
-          <button
-            onClick={() => navigate('/settings')}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
-            title="Account & Billing"
-          >
-            <User className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={signOut}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-sm transition-colors"
-            title={`Sign out (${user?.email})`}
-          >
-            <LogOut className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={toggleTheme}
-            className="p-1.5 rounded-sm text-muted-foreground hover:bg-accent/50 transition-colors"
-            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-          >
-            {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-          </button>
-          <button
-            onClick={toggleOutput}
-            className={`p-1.5 rounded-sm transition-colors ${showOutput ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}
-            title="Toggle Output (⌘J)"
-          >
-            <Terminal className="h-3.5 w-3.5" />
-          </button>
-          {/* Chat / Agent / Timeline / Protocol tab switcher */}
-          <div className="flex items-center border border-border rounded-sm overflow-hidden ml-1">
+
+          {/* ── Primary: Agent toggle ── */}
+          <div className="flex items-center border border-border rounded-md overflow-hidden ml-1">
             <button
               onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('chat'); }}
-              className={`p-1.5 transition-colors ${
+              className={`p-1.5 transition-all duration-150 ${
                 showChat && activeRightPanel === 'chat'
                   ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50'
+                  : 'text-muted-foreground hover:bg-accent/40 hover:text-foreground'
               }`}
               title="Chat (⌘B)"
             >
@@ -263,60 +188,105 @@ export function IDELayout() {
             </button>
             <button
               onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('agent'); }}
-              className={`p-1.5 transition-colors ${
+              className={`relative p-1.5 transition-all duration-150 ${
                 showChat && activeRightPanel === 'agent'
                   ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50'
+                  : 'text-muted-foreground hover:bg-accent/40 hover:text-foreground'
               }`}
               title="Agent Timeline"
             >
               <Brain className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('timeline' as any); }}
-              className={`p-1.5 transition-colors ${
-                showChat && (activeRightPanel as string) === 'timeline'
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50'
-              }`}
-              title="Event Timeline"
-            >
-              <Activity className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('protocol' as any); }}
-              className={`p-1.5 transition-colors ${
-                showChat && (activeRightPanel as string) === 'protocol'
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50'
-              }`}
-              title="Protocol Zone"
-            >
-              <Globe2 className="h-3.5 w-3.5" />
+              {isAgentActive && (
+                <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-ide-warning animate-pulse" />
+              )}
             </button>
           </div>
-          <button
-            onClick={() => {
-              const e = new KeyboardEvent('keydown', { key: 'k', metaKey: true });
-              window.dispatchEvent(e);
-            }}
-            className="p-1.5 rounded-sm text-muted-foreground hover:bg-accent/50 transition-colors"
-            title="Command Palette (⌘K)"
-          >
-            <Command className="h-3.5 w-3.5" />
-          </button>
+
+          {!focusMode && (
+            <>
+              <div className="w-px h-5 bg-border mx-1" />
+
+              {/* ── Utility icons ── */}
+              <NavIconButton
+                icon={<Clock className="h-3.5 w-3.5" />}
+                tooltip="Timeline"
+                onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('timeline' as any); }}
+                active={showChat && (activeRightPanel as string) === 'timeline'}
+              />
+              <NavIconButton
+                icon={<Activity className="h-3.5 w-3.5" />}
+                tooltip="Runner"
+                onClick={toggleOutput}
+                active={showOutput}
+                status={{ color: 'green' }}
+              />
+              <NavIconButton
+                icon={<Plug className="h-3.5 w-3.5" />}
+                tooltip="Integrations"
+                onClick={() => setShowIntegrations(true)}
+                status={activeMCP > 0 ? { color: 'green' } : undefined}
+              />
+              <NavIconButton
+                icon={<Rocket className="h-3.5 w-3.5" />}
+                tooltip="CI/CD"
+                onClick={() => setShowCICD(true)}
+              />
+              <NavIconButton
+                icon={<Globe2 className="h-3.5 w-3.5" />}
+                tooltip="Protocol Zone"
+                onClick={() => { if (!showChat) toggleChat(); setActiveRightPanel('protocol' as any); }}
+                active={showChat && (activeRightPanel as string) === 'protocol'}
+              />
+              <NavIconButton
+                icon={<Users className="h-3.5 w-3.5" />}
+                tooltip="Collaboration"
+                onClick={handleCollabClick}
+              />
+
+              <div className="w-px h-5 bg-border mx-1" />
+
+              <NavIconButton
+                icon={theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+                tooltip={`${theme === 'dark' ? 'Light' : 'Dark'} mode`}
+                onClick={toggleTheme}
+              />
+              <NavIconButton
+                icon={<User className="h-3.5 w-3.5" />}
+                tooltip="Settings"
+                onClick={() => navigate('/settings')}
+              />
+              <NavIconButton
+                icon={<LogOut className="h-3.5 w-3.5" />}
+                tooltip={`Sign out (${user?.email})`}
+                onClick={signOut}
+              />
+            </>
+          )}
+
+          {/* Focus mode toggle — always visible */}
+          <NavIconButton
+            icon={focusMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            tooltip={focusMode ? 'Exit Focus Mode' : 'Focus Mode'}
+            onClick={() => setFocusMode(prev => !prev)}
+            active={focusMode}
+            className={focusMode ? 'text-primary' : ''}
+          />
         </div>
       </div>
 
-      {/* Main content */}
+      {/* ─── Main content ─── */}
       <div className="flex-1 min-h-0 flex flex-col">
         <PanelGroup direction="horizontal" className="flex-1">
-          <Panel defaultSize={15} minSize={10} maxSize={30}>
-            <FileTree />
-          </Panel>
-          <PanelResizeHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
+          {!focusMode && (
+            <>
+              <Panel defaultSize={15} minSize={10} maxSize={30}>
+                <FileTree />
+              </Panel>
+              <PanelResizeHandle className="w-px bg-border hover:bg-primary/50 transition-colors" />
+            </>
+          )}
 
-          <Panel defaultSize={showChat ? 55 : 85} minSize={30}>
+          <Panel defaultSize={showChat ? (focusMode ? 70 : 55) : (focusMode ? 100 : 85)} minSize={30}>
             <div className="h-full flex flex-col">
               <div className="flex-1 min-h-0">
                 <EditorPane />
@@ -342,9 +312,7 @@ export function IDELayout() {
                     onPause={pauseAgent}
                     onOpenFile={(path) => {
                       const file = files.find(f => f.path === path || `/${f.path}` === path);
-                      if (file) {
-                        openFile(file.id);
-                      }
+                      if (file) openFile(file.id);
                     }}
                     onNewRun={() => {
                       clearAgentRun();
@@ -358,46 +326,32 @@ export function IDELayout() {
         </PanelGroup>
       </div>
 
-      {/* Status bar */}
-      <div className="flex items-center justify-between px-3 h-6 bg-ide-panel-header border-t border-border text-[10px] text-muted-foreground shrink-0">
-        <div className="flex items-center gap-3">
-          <span>TypeScript</span>
-          <span>UTF-8</span>
-          <span>Spaces: 2</span>
-          {mcpServers.filter(s => s.enabled).length > 0 && (
-            <span className="flex items-center gap-1 text-primary">
-              <Plug className="h-2.5 w-2.5" />
-              {mcpServers.filter(s => s.enabled).length} MCP
+      {/* ─── Status bar ─── */}
+      {!focusMode && (
+        <div className="flex items-center justify-between px-3 h-6 bg-ide-panel-header border-t border-border text-[10px] text-muted-foreground shrink-0">
+          <div className="flex items-center gap-3">
+            <span>TypeScript</span>
+            <span>UTF-8</span>
+            <span>Spaces: 2</span>
+            {activeMCP > 0 && (
+              <span className="flex items-center gap-1 text-primary">
+                <Plug className="h-2.5 w-2.5" />
+                {activeMCP} MCP
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-ide-success" />
+              Connected
             </span>
-          )}
+            <span>⌘K commands · ⌘P files · ⌘⏎ send</span>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-ide-success" />
-            Connected
-          </span>
-          <span>⌘K commands · ⌘P files · ⌘⏎ send</span>
-        </div>
-      </div>
-
-      <CommandPalette />
-      {showMCP && <MCPConfig servers={mcpServers} onToggleServer={toggleMCPServer} onClose={() => setShowMCP(false)} />}
-      {showHooks && (
-        <HooksConfig
-          hooks={hooks}
-          onToggleHook={toggleHook}
-          onAddHook={addHook}
-          onRemoveHook={removeHook}
-          onClose={() => setShowHooks(false)}
-          webhookSecrets={webhookSecrets}
-          executions={hookExecutions}
-          onGenerateSecret={generateWebhookSecret}
-          onDeleteSecret={deleteWebhookSecret}
-          onRefreshExecutions={refreshHookExecutions}
-          webhookBaseUrl={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/project-webhooks`}
-          projectId={project.id}
-        />
       )}
+
+      {/* ─── Modals ─── */}
+      <CommandPalette focusMode={focusMode} setFocusMode={setFocusMode} />
       {showSnapshots && (
         <SnapshotBrowser
           snapshots={snapshots}
@@ -434,20 +388,27 @@ export function IDELayout() {
         />
       )}
       {showTxBuilder && <TransactionBuilder onClose={() => setShowTxBuilder(false)} />}
-      {showPermissions && <PermissionRulesManager onClose={() => setShowPermissions(false)} />}
       {showCICD && <CICDPanel projectId={project.id} onClose={() => setShowCICD(false)} />}
       {showOpenClaw && <OpenClawPanel onClose={() => setShowOpenClaw(false)} />}
-      <Web3Modal
-        open={showWeb3}
-        onClose={() => setShowWeb3(false)}
-        onOpenTxBuilder={() => setShowTxBuilder(true)}
-        onOpenMCP={(key) => { setShowMCP(true); /* MCP panel opens; server key can be used for filtering */ }}
-      />
-      <InstallModal
-        open={showInstall}
-        onClose={() => setShowInstall(false)}
-        onOpenOpenClaw={() => setShowOpenClaw(true)}
-      />
+      {showIntegrations && (
+        <IntegrationsPanel
+          onClose={() => setShowIntegrations(false)}
+          mcpServers={mcpServers}
+          onToggleMCPServer={toggleMCPServer}
+          hooks={hooks}
+          onToggleHook={toggleHook}
+          onAddHook={addHook}
+          onRemoveHook={removeHook}
+          webhookSecrets={webhookSecrets}
+          hookExecutions={hookExecutions}
+          onGenerateSecret={generateWebhookSecret}
+          onDeleteSecret={deleteWebhookSecret}
+          onRefreshExecutions={refreshHookExecutions}
+          webhookBaseUrl={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/project-webhooks`}
+          projectId={project.id}
+          onOpenTxBuilder={() => setShowTxBuilder(true)}
+        />
+      )}
     </div>
   );
 }
