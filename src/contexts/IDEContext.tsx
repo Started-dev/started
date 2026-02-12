@@ -188,14 +188,8 @@ Use this space for:
 - warnings or edge cases
 `;
 
-const DEMO_FILES: IDEFile[] = [
-  { id: 'root-src', name: 'src', path: '/src', content: '', language: '', parentId: null, isFolder: true },
+const BLANK_PROJECT_FILES: IDEFile[] = [
   { id: 'f-started-md', name: 'STARTED.md', path: '/STARTED.md', content: STARTED_MD_CONTENT, language: 'markdown', parentId: null, isFolder: false },
-  { id: 'f-main', name: 'main.ts', path: '/src/main.ts', content: `import { greet } from './utils';\n\nconst name = process.argv[2] || 'World';\nconsole.log(greet(name));\nconsole.log('Started Cloud IDE is running!');\n`, language: 'typescript', parentId: 'root-src', isFolder: false },
-  { id: 'f-utils', name: 'utils.ts', path: '/src/utils.ts', content: `export function greet(name: string): string {\n  return \`Hello, \${name}! Welcome to Started.\`;\n}\n\nexport function add(a: number, b: number): number {\n  return a + b;\n}\n`, language: 'typescript', parentId: 'root-src', isFolder: false },
-  { id: 'f-readme', name: 'README.md', path: '/README.md', content: `# Demo Project\n\nA simple TypeScript project to demonstrate the Started Cloud IDE.\n\n## Getting Started\n\n\`\`\`bash\nnpm install\nnpm start\n\`\`\`\n\n## Features\n\n- TypeScript support\n- AI assistance\n- Live preview\n`, language: 'markdown', parentId: null, isFolder: false },
-  { id: 'f-pkg', name: 'package.json', path: '/package.json', content: `{\n  "name": "demo-project",\n  "version": "1.0.0",\n  "main": "src/main.ts",\n  "scripts": {\n    "start": "ts-node src/main.ts",\n    "test": "jest"\n  }\n}\n`, language: 'json', parentId: null, isFolder: false },
-  { id: 'f-tsconfig', name: 'tsconfig.json', path: '/tsconfig.json', content: `{\n  "compilerOptions": {\n    "target": "ES2020",\n    "module": "commonjs",\n    "strict": true,\n    "outDir": "./dist"\n  },\n  "include": ["src/**/*"]\n}\n`, language: 'json', parentId: null, isFolder: false },
 ];
 
 const LANG_MAP: Record<string, string> = {
@@ -324,11 +318,11 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   const runnerClientRef = useRef<IRunnerClient>(getRunnerClient());
   const [runnerSession, setRunnerSession] = useState<RunnerSession | null>(null);
   const [filesReady, setFilesReady] = useState(false);
-  const [files, setFiles] = useState<IDEFile[]>(DEMO_FILES);
+  const [files, setFiles] = useState<IDEFile[]>(BLANK_PROJECT_FILES);
   const [openTabs, setOpenTabs] = useState<OpenTab[]>([
-    { fileId: 'f-main', name: 'main.ts', path: '/src/main.ts', isModified: false },
+    { fileId: 'f-started-md', name: 'STARTED.md', path: '/STARTED.md', isModified: false },
   ]);
-  const [activeTabId, setActiveTabId] = useState<string | null>('f-main');
+  const [activeTabId, setActiveTabId] = useState<string | null>('f-started-md');
   const makeWelcomeMessage = (): ChatMessage => ({
     id: 'welcome-' + Date.now(), role: 'assistant',
     content: "Hello! I'm Started, your AI coding assistant. I can help you write, debug, and refactor code. Select some code or mention a file to get started.\n\nTry asking me to:\n- Explain a function\n- Add error handling\n- Write tests\n- Refactor code\n\n**Agent Mode**: Click the 🧠 Agent tab to run autonomous multi-step tasks.",
@@ -558,17 +552,12 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
           setActiveTabId(null);
         }
       } else if (projectId && !initialFiles) {
-        setFiles(DEMO_FILES);
-        saveAllFiles(DEMO_FILES);
-        caSnapshots.createCASnapshot(DEMO_FILES, 'Initial project setup');
-        const firstFile = DEMO_FILES.find(f => !f.isFolder);
-        if (firstFile) {
-          setOpenTabs([{ fileId: firstFile.id, name: firstFile.name, path: firstFile.path, isModified: false }]);
-          setActiveTabId(firstFile.id);
-        } else {
-          setOpenTabs([]);
-          setActiveTabId(null);
-        }
+        // New blank project — only STARTED.md
+        setFiles(BLANK_PROJECT_FILES);
+        saveAllFiles(BLANK_PROJECT_FILES);
+        caSnapshots.createCASnapshot(BLANK_PROJECT_FILES, 'Initial blank project');
+        setOpenTabs([{ fileId: 'f-started-md', name: 'STARTED.md', path: '/STARTED.md', isModified: false }]);
+        setActiveTabId('f-started-md');
       }
       setFilesReady(true);
     })();
