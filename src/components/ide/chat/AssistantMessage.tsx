@@ -1,6 +1,8 @@
 import React from 'react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown } from 'lucide-react';
+import { ThoughtBlock } from './ThoughtBlock';
+import { ToolActionBlock } from './ToolActionBlock';
+import { PlanBlock } from './PlanBlock';
+import { QuestionCard } from './QuestionCard';
 import { AnimatedDiffBlock } from './AnimatedDiffBlock';
 import { CommandBlock } from './CommandBlock';
 import { ConfidenceFooter } from './ConfidenceFooter';
@@ -9,17 +11,53 @@ import type { ChatMessage } from '@/types/ide';
 
 interface AssistantMessageProps {
   msg: ChatMessage;
+  onAnswer?: (answer: string) => void;
 }
 
 interface ParsedBlock {
-  type: 'plan' | 'diff' | 'command' | 'verification' | 'code' | 'text';
+  type: 'thought' | 'tool_action' | 'plan' | 'question' | 'diff' | 'command' | 'verification' | 'code' | 'text';
   content: string;
   lang?: string;
+  elapsed?: string;
+  options?: string[];
+  questionText?: string;
 }
+
+const TOOL_ACTION_PATTERN = /^(Reading|Grepped|Grepping|Listed|Listing|Edited|Editing|Created|Creating|Applied|Applying)\s.+/;
 
 function parseBlocks(content: string): ParsedBlock[] {
   const blocks: ParsedBlock[] = [];
-  const parts = content.split(/(```[\s\S]*?```)/g);
+
+  // Extract <thought> tags first
+  let remaining = content;
+  const thoughtRegex = /<thought(?:\s+time="([^"]*)")?>([\s\S]*?)<\/thought>/g;
+  const thoughtMatches: Array<{ index: number; length: number; block: ParsedBlock }> = [];
+
+  let match;
+  while ((match = thoughtRegex.exec(content)) !== null) {
+    thoughtMatches.push({
+      index: match.index,
+      length: match[0].length,
+      block: { type: 'thought', content: match[2].trim(), elapsed: match[1] || undefined },
+    });
+  }
+
+  // Remove thought tags from content for further parsing
+  for (const tm of thoughtMatches.reverse()) {
+    remaining = remaining.slice(0, tm.index) + '\n__THOUGHT_PLACEHOLDER__\n' + remaining.slice(tm.index + tm.length);
+  }
+
+  // Also detect "Thought Xs" pattern (Cursor-style)
+  remaining = remaining.replace(/^Thought\s+(\d+s?)\s*$/gm, (_, time) => {
+    thoughtMatches.push({
+      index: -1, length: 0,
+      block: { type: 'thought', content: '', elapsed: time },
+    });
+    return '__THOUGHT_PLACEHOLDER__';
+  });
+
+  const parts = remaining.split(/(```[\s\S]*?```)/g);
+  let thoughtIdx = 0;
 
   for (const part of parts) {
     if (part.startsWith('```') && part.endsWith('```')) {
@@ -35,20 +73,92 @@ function parseBlocks(content: string): ParsedBlock[] {
         blocks.push({ type: 'code', content: code, lang });
       }
     } else if (part.trim()) {
-      // Check for plan headers
-      const planMatch = part.match(/^(Plan:|##?\s*Plan)/m);
-      const verificationMatch = part.match(/^(Verification:|Status:)/m);
+      // Split text into lines for multi-type detection
+      const lines = part.split('\n');
+      let currentToolActions: string[] = [];
+      let currentTextLines: string[] = [];
 
-      if (planMatch) {
-        blocks.push({ type: 'plan', content: part.trim() });
-      } else if (verificationMatch) {
-        blocks.push({ type: 'verification', content: part.trim() });
-      } else {
-        blocks.push({ type: 'text', content: part.trim() });
+      const flushText = () => {
+        if (currentTextLines.length === 0) return;
+        const text = currentTextLines.join('\n').trim();
+        if (!text) { currentTextLines = []; return; }
+
+        if (text === '__THOUGHT_PLACEHOLDER__') {
+          // Insert the thought block
+          const tb = thoughtMatches.filter(t => t.index !== -2);
+          if (thoughtIdx < tb.length) {
+            blocks.push(tb[thoughtIdx].block);
+            thoughtIdx++;
+          }
+        } else if (/^(Plan:|##?\s*Plan)/m.test(text)) {
+          blocks.push({ type: 'plan', content: text });
+        } else if (/^(Verification:|Status:)/m.test(text)) {
+          blocks.push({ type: 'verification', content: text });
+        } else if (isQuestion(text)) {
+          const parsed = parseQuestion(text);
+          blocks.push(parsed);
+        } else {
+          blocks.push({ type: 'text', content: text });
+        }
+        currentTextLines = [];
+      };
+
+      const flushToolActions = () => {
+        if (currentToolActions.length === 0) return;
+        blocks.push({ type: 'tool_action', content: currentToolActions.join('\n') });
+        currentToolActions = [];
+      };
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed === '__THOUGHT_PLACEHOLDER__') {
+          flushToolActions();
+          flushText();
+          if (thoughtIdx < thoughtMatches.length) {
+            blocks.push(thoughtMatches[thoughtIdx].block);
+            thoughtIdx++;
+          }
+        } else if (TOOL_ACTION_PATTERN.test(trimmed)) {
+          flushText();
+          currentToolActions.push(trimmed);
+        } else {
+          flushToolActions();
+          currentTextLines.push(line);
+        }
       }
+      flushToolActions();
+      flushText();
     }
   }
   return blocks;
+}
+
+function isQuestion(text: string): boolean {
+  // Detect patterns like "A) option" or "A. option" with 2+ options
+  const optionLines = text.split('\n').filter(l => /^\s*[A-F][.)]\s/.test(l));
+  return optionLines.length >= 2;
+}
+
+function parseQuestion(text: string): ParsedBlock {
+  const lines = text.split('\n');
+  const options: string[] = [];
+  const questionLines: string[] = [];
+
+  for (const line of lines) {
+    const optMatch = line.match(/^\s*[A-F][.)]\s*(.+)/);
+    if (optMatch) {
+      options.push(optMatch[1].trim());
+    } else if (options.length === 0) {
+      questionLines.push(line);
+    }
+  }
+
+  return {
+    type: 'question',
+    content: text,
+    questionText: questionLines.join('\n').trim(),
+    options,
+  };
 }
 
 function extractConfidence(content: string): 'high' | 'medium' | 'low' | undefined {
@@ -56,32 +166,32 @@ function extractConfidence(content: string): 'high' | 'medium' | 'low' | undefin
   return match ? (match[1].toLowerCase() as 'high' | 'medium' | 'low') : undefined;
 }
 
-function extractAttestation(content: string): string | undefined {
-  const match = content.match(/Attestation:\s*(0x[a-f0-9]+)/i);
-  return match ? match[1] : undefined;
-}
-
-export function AssistantMessage({ msg }: AssistantMessageProps) {
+export function AssistantMessage({ msg, onAnswer }: AssistantMessageProps) {
   const blocks = parseBlocks(msg.content);
   const confidence = extractConfidence(msg.content);
-  const attestation = extractAttestation(msg.content);
 
   return (
-    <div className="animate-fade-in space-y-3">
+    <div className="animate-fade-in space-y-2 border-l-2 border-primary/30 pl-3">
       {blocks.map((block, i) => (
         <React.Fragment key={i}>
+          {block.type === 'thought' && (
+            <ThoughtBlock content={block.content} elapsed={block.elapsed} />
+          )}
+
+          {block.type === 'tool_action' && (
+            <ToolActionBlock actions={block.content.split('\n').filter(l => l.trim())} />
+          )}
+
           {block.type === 'plan' && (
-            <Collapsible defaultOpen>
-              <CollapsibleTrigger className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/80 hover:text-foreground transition-colors duration-150 w-full">
-                <ChevronDown className="h-3 w-3 transition-transform data-[state=closed]:rotate-[-90deg]" />
-                Plan
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-1.5">
-                <div className="text-xs text-foreground/70 whitespace-pre-wrap leading-relaxed font-mono pl-4 border-l-2 border-border/40">
-                  {renderInlineFormatting(block.content)}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
+            <PlanBlock content={block.content} />
+          )}
+
+          {block.type === 'question' && block.options && (
+            <QuestionCard
+              question={block.questionText || 'Choose an option:'}
+              options={block.options}
+              onAnswer={onAnswer}
+            />
           )}
 
           {block.type === 'diff' && (
@@ -106,14 +216,18 @@ export function AssistantMessage({ msg }: AssistantMessageProps) {
           )}
 
           {block.type === 'text' && (
-            <div className="text-xs text-foreground whitespace-pre-wrap leading-relaxed font-mono">
+            <div className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">
               {renderInlineFormatting(block.content)}
             </div>
           )}
-
-          {i < blocks.length - 1 && <div className="border-b border-border/20" />}
         </React.Fragment>
       ))}
+
+      {confidence && (
+        <div className="text-[10px] text-muted-foreground/60 mt-1">
+          Confidence: {confidence}
+        </div>
+      )}
 
       <RewindReasoning reasoning={msg.reasoning} />
     </div>
@@ -121,9 +235,13 @@ export function AssistantMessage({ msg }: AssistantMessageProps) {
 }
 
 function renderInlineFormatting(text: string): React.ReactNode {
-  return text.split(/(\*\*.*?\*\*)/g).map((seg, j) => {
+  // Handle bold, inline code, and links
+  return text.split(/(\*\*.*?\*\*|`[^`]+`)/g).map((seg, j) => {
     if (seg.startsWith('**') && seg.endsWith('**')) {
       return <strong key={j} className="text-foreground font-semibold">{seg.slice(2, -2)}</strong>;
+    }
+    if (seg.startsWith('`') && seg.endsWith('`')) {
+      return <code key={j} className="text-[11px] px-1 py-0.5 bg-muted rounded-sm font-mono text-primary/80">{seg.slice(1, -1)}</code>;
     }
     return <React.Fragment key={j}>{seg}</React.Fragment>;
   });

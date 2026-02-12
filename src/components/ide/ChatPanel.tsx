@@ -208,6 +208,8 @@ export function ChatPanel() {
         onSwitchConversation={switchConversation}
         onNewConversation={newConversation}
         onDeleteConversation={deleteConversation}
+        activeSkillCount={activeSkills.length}
+        onOpenSkills={() => setActiveRightPanel('chat')}
       />
 
       {/* Messages */}
