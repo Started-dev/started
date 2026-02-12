@@ -67,14 +67,10 @@ export function ChatPanel() {
       setChips(prev => [...prev.filter(c => c.type !== 'selection'), { type: 'selection', label: 'Selection', content: selectedText }]);
     } else if (type === 'file' && activeTabId) {
       const file = getFileById(activeTabId);
-      if (file) {
-        setChips(prev => [...prev.filter(c => !(c.type === 'file' && c.label === file.name)), { type: 'file', label: file.name, content: file.content }]);
-      }
+      if (file) setChips(prev => [...prev.filter(c => !(c.type === 'file' && c.label === file.name)), { type: 'file', label: file.name, content: file.content }]);
     } else if (type === 'errors') {
       const lastRun = runs[runs.length - 1];
-      if (lastRun) {
-        setChips(prev => [...prev.filter(c => c.type !== 'errors'), { type: 'errors', label: 'Last Run Errors', content: lastRun.logs }]);
-      }
+      if (lastRun) setChips(prev => [...prev.filter(c => c.type !== 'errors'), { type: 'errors', label: 'Last Run Errors', content: lastRun.logs }]);
     } else if (type === 'url') {
       setChipDialog({ type: 'url', value: '' });
     } else if (type === 'web') {
@@ -101,8 +97,7 @@ export function ChatPanel() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const base64 = reader.result as string;
-      setChips(prev => [...prev, { type: 'image', label: file.name.slice(0, 20), content: base64 }]);
+      setChips(prev => [...prev, { type: 'image', label: file.name.slice(0, 20), content: reader.result as string }]);
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -122,14 +117,11 @@ export function ChatPanel() {
     ]);
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
     const isText = TEXT_EXTENSIONS.has(ext) || file.type.startsWith('text/');
-
     if (isText) {
       const reader = new FileReader();
       reader.onload = () => {
         let text = reader.result as string;
-        if (text.length > 50_000) {
-          text = text.slice(0, 50_000) + '\n\n[...truncated at 50 000 chars]';
-        }
+        if (text.length > 50_000) text = text.slice(0, 50_000) + '\n\n[...truncated at 50 000 chars]';
         setChips(prev => [...prev, { type: 'attachment', label: file.name.slice(0, 24), content: text }]);
       };
       reader.readAsText(file);
@@ -189,7 +181,6 @@ export function ChatPanel() {
   const pendingTools = toolCalls.filter(tc => tc.status === 'pending');
   const recentTools = toolCalls.filter(tc => tc.status !== 'pending').slice(-6);
 
-  // Chip display: max 3 visible, rest collapsed
   const MAX_VISIBLE_CHIPS = 3;
   const visibleChips = chips.slice(0, MAX_VISIBLE_CHIPS);
   const hiddenChipCount = Math.max(0, chips.length - MAX_VISIBLE_CHIPS);
@@ -210,7 +201,7 @@ export function ChatPanel() {
       />
 
       {/* Messages */}
-      <div className="flex-1 overflow-auto px-3 py-3 space-y-3">
+      <div className="flex-1 overflow-auto px-4 py-4 space-y-5">
         {chatMessages.map(msg => {
           if (msg.cardType === 'action') return <ActionCard key={msg.id} msg={msg} />;
           if (msg.cardType === 'result') {
@@ -249,7 +240,7 @@ export function ChatPanel() {
         })}
 
         {recentTools.length > 0 && (
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {recentTools.map(tc => <ToolCallDisplay key={tc.id} toolCall={tc} />)}
           </div>
         )}
@@ -305,27 +296,27 @@ export function ChatPanel() {
       {/* Suggestion cards */}
       <SuggestionCards inputLength={input.length} onSendMessage={(msg) => handleSend(msg)} />
 
-      {/* Context strip — minimal */}
+      {/* Context strip */}
       <ContextStrip />
 
-      {/* Context chips — neutral, max 3 visible */}
+      {/* Context chips */}
       {chips.length > 0 && (
-        <div className="px-3 pb-1 flex flex-wrap gap-1 items-center">
+        <div className="px-4 pb-1 flex flex-wrap gap-1.5 items-center">
           {displayChips.map((chip, i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded-sm cursor-pointer bg-muted/60 text-muted-foreground border border-border/40 hover:bg-muted hover:text-foreground transition-colors duration-150"
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md cursor-pointer bg-muted/30 text-muted-foreground border border-border/20 hover:border-primary/30 hover:text-foreground transition-colors duration-150"
               onClick={() => removeChip(i)}
             >
               {chipIcon(chip.type)}
               <span className="truncate max-w-[80px]">{chip.label}</span>
-              <X className="h-2.5 w-2.5 opacity-50" />
+              <X className="h-2.5 w-2.5 opacity-40" />
             </span>
           ))}
           {hiddenChipCount > 0 && !showAllChips && (
             <button
               onClick={() => setShowAllChips(true)}
-              className="text-[10px] px-1.5 py-0.5 rounded-sm bg-muted/40 text-muted-foreground hover:text-foreground transition-colors duration-150"
+              className="text-[10px] px-2 py-0.5 rounded-md bg-muted/20 text-muted-foreground/50 hover:text-foreground border border-border/20 transition-colors duration-150"
             >
               +{hiddenChipCount}
             </button>
@@ -333,7 +324,7 @@ export function ChatPanel() {
           {showAllChips && chips.length > MAX_VISIBLE_CHIPS && (
             <button
               onClick={() => setShowAllChips(false)}
-              className="text-[10px] px-1.5 py-0.5 rounded-sm text-muted-foreground hover:text-foreground transition-colors duration-150"
+              className="text-[10px] px-2 py-0.5 rounded-md text-muted-foreground/40 hover:text-foreground transition-colors duration-150"
             >
               less
             </button>
@@ -345,17 +336,17 @@ export function ChatPanel() {
       <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
       <input ref={attachInputRef} type="file" className="hidden" onChange={handleAttachmentUpload} />
 
-      {/* Input area — minimal command bar */}
-      <div className="border-t border-border/50 p-2.5">
-        <div className="flex gap-2 items-end">
+      {/* Input area — premium command bar */}
+      <div className="border-t border-border/30 p-3">
+        <div className="flex gap-2 items-end rounded-lg border border-border/30 bg-muted/10 px-2 py-1.5 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200">
           {/* + attach menu */}
           <Popover open={attachMenuOpen} onOpenChange={setAttachMenuOpen}>
             <PopoverTrigger asChild>
-              <button className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150 shrink-0 self-end mb-0.5">
+              <button className="p-1 rounded-md text-muted-foreground/40 hover:text-foreground hover:bg-muted/30 transition-colors duration-150 shrink-0 self-end mb-0.5">
                 <Plus className="h-4 w-4" />
               </button>
             </PopoverTrigger>
-            <PopoverContent side="top" align="start" className="w-40 p-1" sideOffset={8}>
+            <PopoverContent side="top" align="start" className="w-44 p-1" sideOffset={8}>
               <div className="flex flex-col">
                 <AttachMenuItem icon={<AtSign className="h-3.5 w-3.5" />} label="Selection" disabled={!selectedText} onClick={() => addChip('selection')} />
                 <AttachMenuItem icon={<FileCode className="h-3.5 w-3.5" />} label="Active file" disabled={!activeTabId} onClick={() => addChip('file')} />
@@ -374,16 +365,16 @@ export function ChatPanel() {
             onChange={e => { setInput(e.target.value); hesitation.recordActivity(); }}
             onKeyDown={handleKeyDown}
             placeholder={agentMode ? 'Describe a goal...' : 'Ask Started...'}
-            className="flex-1 bg-transparent text-foreground text-sm px-2 py-1.5 rounded-md border-none resize-none outline-none min-h-[32px] max-h-[120px] font-sans placeholder:text-muted-foreground/50"
+            className="flex-1 bg-transparent text-foreground text-[13px] px-1 py-1 rounded-md border-none resize-none outline-none min-h-[28px] max-h-[120px] font-sans placeholder:text-muted-foreground/35 leading-relaxed"
             rows={1}
           />
 
-          <div className="flex items-center gap-1 shrink-0 self-end mb-0.5">
+          <div className="flex items-center gap-0.5 shrink-0 self-end mb-0.5">
             <ModelSelector value={selectedModel} onChange={setSelectedModel} />
             <button
               onClick={() => setAgentMode(prev => !prev)}
               className={`p-1.5 rounded-md transition-colors duration-150 ${
-                agentMode ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                agentMode ? 'text-primary bg-primary/10' : 'text-muted-foreground/40 hover:text-foreground hover:bg-muted/30'
               }`}
               title={agentMode ? 'Agent mode on' : 'Agent mode'}
             >
@@ -392,17 +383,17 @@ export function ChatPanel() {
             <button
               onClick={() => handleSend()}
               disabled={!input.trim() && chips.length === 0}
-              className="p-1.5 rounded-md transition-all duration-150 shrink-0 disabled:opacity-20 text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground"
+              className="p-1.5 rounded-md transition-all duration-150 shrink-0 disabled:opacity-15 text-primary hover:bg-primary/10 disabled:hover:bg-transparent disabled:text-muted-foreground/20"
             >
               <Send className="h-4 w-4" />
             </button>
           </div>
         </div>
         {/* Hint row */}
-        <div className="flex items-center justify-between px-1 pt-1">
-          <span className="text-[9px] text-muted-foreground/40">⏎ send · ⌘K commands</span>
+        <div className="flex items-center justify-between px-1 pt-1.5">
+          <span className="text-[9px] text-muted-foreground/30">⏎ send · ⌘K commands</span>
           {activeSkills.length > 0 && (
-            <span className="text-[9px] text-muted-foreground/50">{activeSkills.length} skill{activeSkills.length !== 1 ? 's' : ''}</span>
+            <span className="text-[9px] text-primary/40">{activeSkills.length} skill{activeSkills.length !== 1 ? 's' : ''}</span>
           )}
         </div>
       </div>
@@ -446,7 +437,7 @@ function AttachMenuItem({ icon, label, disabled, onClick }: { icon: React.ReactN
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-foreground/80 hover:bg-muted/60 rounded-sm transition-colors duration-150 disabled:opacity-30 disabled:pointer-events-none w-full text-left"
+      className="flex items-center gap-2.5 px-2.5 py-2 text-[11px] text-foreground/70 hover:bg-muted/40 rounded-sm transition-colors duration-150 disabled:opacity-25 disabled:pointer-events-none w-full text-left"
     >
       {icon}
       {label}
@@ -456,19 +447,19 @@ function AttachMenuItem({ icon, label, disabled, onClick }: { icon: React.ReactN
 
 function UserMessage({ msg, chipIcon }: { msg: import('@/types/ide').ChatMessage; chipIcon: (type: string) => React.ReactNode }) {
   return (
-    <div className="animate-fade-in flex flex-col items-end gap-1">
+    <div className="animate-fade-in flex flex-col items-end gap-1.5">
       {msg.contextChips && msg.contextChips.length > 0 && (
         <div className="flex flex-wrap gap-1 justify-end">
           {msg.contextChips.filter(c => !c.label.startsWith('Skill:')).map((chip, i) => (
-            <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-muted/40 text-muted-foreground text-[10px] rounded-sm">
+            <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-muted/20 text-muted-foreground/50 text-[10px] rounded-md border border-border/15">
               {chipIcon(chip.type)}
               {chip.label}
             </span>
           ))}
         </div>
       )}
-      <div className="bg-muted/40 text-foreground rounded-lg px-3 py-2 max-w-[85%]">
-        <div className="whitespace-pre-wrap font-mono text-xs">{msg.content}</div>
+      <div className="bg-primary/8 text-foreground rounded-lg px-3.5 py-2.5 max-w-[85%] border border-primary/10">
+        <div className="whitespace-pre-wrap text-[13px] leading-relaxed">{msg.content}</div>
       </div>
     </div>
   );

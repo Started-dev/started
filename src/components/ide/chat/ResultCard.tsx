@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, RotateCcw, Send, Copy, Check, AlertTriangle } from 'lucide-react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronRight, RotateCcw, Send, Copy, Check } from 'lucide-react';
 import type { ChatMessage } from '@/types/ide';
 
 interface ResultCardProps {
@@ -12,6 +11,7 @@ interface ResultCardProps {
 export function ResultCard({ msg, onRetry, onSendToChat }: ResultCardProps) {
   const data = msg.resultData;
   const [copied, setCopied] = useState(false);
+  const [logsOpen, setLogsOpen] = useState(false);
   if (!data) return null;
 
   const isSuccess = data.exitCode === 0;
@@ -23,7 +23,7 @@ export function ResultCard({ msg, onRetry, onSendToChat }: ResultCardProps) {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  // Determine the single primary action
+  // Single primary action
   const primaryAction = isRunnerUnavailable
     ? null
     : !isSuccess && onSendToChat
@@ -33,40 +33,48 @@ export function ResultCard({ msg, onRetry, onSendToChat }: ResultCardProps) {
         : null;
 
   return (
-    <div className="animate-fade-in space-y-1">
+    <div className="animate-fade-in space-y-2 pl-3 relative">
+      {/* Left accent for failed results */}
+      {!isSuccess && !isRunnerUnavailable && (
+        <div className="absolute left-0 top-0 bottom-0 w-[2px] rounded-full bg-[hsl(var(--ide-error))]/40" />
+      )}
+
       {/* Status line */}
-      <div className="flex items-center gap-1.5">
-        <span className={`h-1.5 w-1.5 rounded-full ${
+      <div className="flex items-center gap-2">
+        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
           isRunnerUnavailable ? 'bg-muted-foreground/30' :
           isSuccess ? 'bg-[hsl(var(--ide-success))]' :
           'bg-[hsl(var(--ide-error))]'
         }`} />
-        <span className="text-[10px] text-muted-foreground/60 font-mono">
+        <span className="text-[11px] text-muted-foreground/70 font-mono">
           {isRunnerUnavailable ? 'Runner unavailable' :
            isSuccess ? 'Success' : `Failed (exit ${data.exitCode})`}
-          {data.durationMs !== undefined && (
-            <span className="ml-1.5 text-muted-foreground/30">
-              {data.durationMs < 1000 ? `${data.durationMs}ms` : `${(data.durationMs / 1000).toFixed(1)}s`}
-            </span>
-          )}
         </span>
+        {data.durationMs !== undefined && (
+          <span className="text-[10px] text-muted-foreground/25 font-mono">
+            {data.durationMs < 1000 ? `${data.durationMs}ms` : `${(data.durationMs / 1000).toFixed(1)}s`}
+          </span>
+        )}
       </div>
 
       {/* Error summary */}
       {data.errorSummary && (
-        <div className="text-[11px] text-[hsl(var(--ide-error))]/70 font-mono pl-3">
+        <div className="text-[11px] text-[hsl(var(--ide-error))]/70 font-mono leading-relaxed">
           {data.errorSummary}
         </div>
       )}
 
-      {/* Logs — collapsed by default */}
+      {/* Logs toggle */}
       {data.logs && (
-        <Collapsible>
-          <div className="flex items-center gap-1">
-            <CollapsibleTrigger className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors duration-150">
-              <ChevronRight className="h-2.5 w-2.5 transition-transform duration-150 data-[state=open]:rotate-90" />
-              Logs
-            </CollapsibleTrigger>
+        <div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setLogsOpen(prev => !prev)}
+              className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors duration-150"
+            >
+              <ChevronRight className={`h-2.5 w-2.5 transition-transform duration-200 ${logsOpen ? 'rotate-90' : ''}`} />
+              <span>Logs</span>
+            </button>
             <button
               onClick={handleCopy}
               className="text-muted-foreground/20 hover:text-muted-foreground transition-colors duration-150 p-0.5 ml-auto"
@@ -74,19 +82,19 @@ export function ResultCard({ msg, onRetry, onSendToChat }: ResultCardProps) {
               {copied ? <Check className="h-2.5 w-2.5 text-[hsl(var(--ide-success))]" /> : <Copy className="h-2.5 w-2.5" />}
             </button>
           </div>
-          <CollapsibleContent>
-            <pre className="mt-1 px-3 py-2 text-[10px] font-mono text-muted-foreground/60 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap rounded-md bg-[hsl(var(--chat-block-bg))]">
+          {logsOpen && (
+            <pre className="mt-1.5 px-3 py-2.5 text-[10px] font-mono text-muted-foreground/50 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap rounded-md bg-[hsl(var(--chat-block-bg))] leading-relaxed">
               {data.logs}
             </pre>
-          </CollapsibleContent>
-        </Collapsible>
+          )}
+        </div>
       )}
 
-      {/* Single primary action */}
+      {/* Primary action — orange CTA */}
       {primaryAction && (
         <button
           onClick={primaryAction.onClick}
-          className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground rounded-sm hover:bg-muted/40 transition-colors duration-150"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors duration-150"
         >
           {primaryAction.icon}
           {primaryAction.label}

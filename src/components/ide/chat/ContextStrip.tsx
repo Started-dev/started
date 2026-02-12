@@ -22,20 +22,16 @@ export function ContextStrip() {
   const chips = useMemo(() => {
     const result: ContextChipData[] = [];
 
-    // Runner status — only when disconnected/misconfigured
     if (runnerStatus === 'disconnected' || runnerStatus === 'misconfigured') {
       result.push({
         key: 'runner',
         icon: <Plug className="h-3 w-3" />,
-        label: `@runner: ${runnerStatus}`,
-        tooltip: runnerStatus === 'disconnected'
-          ? 'No runner connected'
-          : 'Runner misconfigured',
+        label: `Runner: ${runnerStatus === 'disconnected' ? 'Disconnected' : 'Misconfigured'}`,
+        tooltip: runnerStatus === 'disconnected' ? 'No runner connected' : 'Runner misconfigured',
         warn: true,
       });
     }
 
-    // Active file
     if (activeTabId) {
       const file = getFileById(activeTabId);
       if (file) {
@@ -48,7 +44,6 @@ export function ContextStrip() {
       }
     }
 
-    // Pending diffs
     const previewPatches = pendingPatches.filter(p => p.status === 'preview');
     if (previewPatches.length > 0) {
       const total = previewPatches.reduce((acc, p) => {
@@ -64,7 +59,6 @@ export function ContextStrip() {
       });
     }
 
-    // Last run — only if runner connected
     if (runs.length > 0 && runnerStatus !== 'disconnected') {
       const last = runs[runs.length - 1];
       const statusLabel = last.status === 'error' ? 'failed' : last.status;
@@ -76,7 +70,6 @@ export function ContextStrip() {
       });
     }
 
-    // Agent
     if (agentRun && (agentRun.status === 'running' || agentRun.status === 'queued')) {
       const currentStep = agentRun.steps.filter(s => s.status === 'completed').length + 1;
       result.push({
@@ -93,20 +86,20 @@ export function ContextStrip() {
   if (chips.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-1 px-3 py-1">
+    <div className="flex flex-wrap gap-1.5 px-3 py-1.5">
       {chips.map(chip => (
         <Tooltip key={chip.key}>
           <TooltipTrigger asChild>
-            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded-sm transition-colors duration-150 group cursor-default ${
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-colors duration-150 group cursor-default ${
               chip.warn
-                ? 'text-muted-foreground/60 bg-muted/30'
-                : 'text-muted-foreground/50 bg-transparent'
+                ? 'text-[hsl(var(--ide-warning))]/60 bg-[hsl(var(--ide-warning))]/5 border border-[hsl(var(--ide-warning))]/10'
+                : 'text-muted-foreground/50 bg-muted/20 border border-border/20'
             }`}>
               {chip.icon}
               <span className="font-mono">{chip.label}</span>
               <button
                 onClick={(e) => { e.stopPropagation(); setDismissed(prev => new Set(prev).add(chip.key)); }}
-                className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-0.5 -mr-0.5 rounded-full hover:bg-muted"
+                className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-0.5 -mr-0.5 rounded-full hover:bg-muted/40"
               >
                 <X className="h-2 w-2" />
               </button>
