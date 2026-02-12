@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, RotateCcw, Send, FileText, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { ChevronRight, RotateCcw, Send, Copy, Check, AlertTriangle } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import type { ChatMessage } from '@/types/ide';
 
 interface ResultCardProps {
@@ -9,105 +10,88 @@ interface ResultCardProps {
 }
 
 export function ResultCard({ msg, onRetry, onSendToChat }: ResultCardProps) {
-  const [expanded, setExpanded] = useState(false);
   const data = msg.resultData;
+  const [copied, setCopied] = useState(false);
   if (!data) return null;
 
   const isSuccess = data.exitCode === 0;
   const isRunnerUnavailable = data.runnerUnavailable;
 
-  const truncatedLogs = data.logs.length > 500 && !expanded
-    ? data.logs.slice(0, 500) + '\n...'
-    : data.logs;
+  const handleCopy = () => {
+    if (data.logs) navigator.clipboard.writeText(data.logs);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  // Determine the single primary action
+  const primaryAction = isRunnerUnavailable
+    ? null
+    : !isSuccess && onSendToChat
+      ? { label: 'Explain error', onClick: onSendToChat, icon: <Send className="h-3 w-3" /> }
+      : !isSuccess && onRetry
+        ? { label: 'Retry', onClick: onRetry, icon: <RotateCcw className="h-3 w-3" /> }
+        : null;
 
   return (
-    <div className={`animate-fade-in rounded-md border overflow-hidden ${
-      isRunnerUnavailable ? 'border-ide-warning/40 bg-ide-warning/5' :
-      isSuccess ? 'border-ide-success/30 bg-card/80' :
-      'border-ide-error/30 bg-card/80'
-    }`}>
-      {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/20">
-        {isRunnerUnavailable ? (
-          <AlertTriangle className="h-3.5 w-3.5 text-ide-warning" />
-        ) : isSuccess ? (
-          <CheckCircle className="h-3.5 w-3.5 text-ide-success" />
-        ) : (
-          <XCircle className="h-3.5 w-3.5 text-ide-error" />
-        )}
-        <span className="text-[11px] font-semibold text-foreground/80">
-          {isRunnerUnavailable ? 'Runner Unavailable' :
-           isSuccess ? 'Execution Complete' : 'Execution Failed'}
+    <div className="animate-fade-in space-y-1">
+      {/* Status line */}
+      <div className="flex items-center gap-1.5">
+        <span className={`h-1.5 w-1.5 rounded-full ${
+          isRunnerUnavailable ? 'bg-muted-foreground/30' :
+          isSuccess ? 'bg-[hsl(var(--ide-success))]' :
+          'bg-[hsl(var(--ide-error))]'
+        }`} />
+        <span className="text-[10px] text-muted-foreground/60 font-mono">
+          {isRunnerUnavailable ? 'Runner unavailable' :
+           isSuccess ? 'Success' : `Failed (exit ${data.exitCode})`}
+          {data.durationMs !== undefined && (
+            <span className="ml-1.5 text-muted-foreground/30">
+              {data.durationMs < 1000 ? `${data.durationMs}ms` : `${(data.durationMs / 1000).toFixed(1)}s`}
+            </span>
+          )}
         </span>
-        {data.exitCode !== undefined && !isRunnerUnavailable && (
-          <span className={`text-[10px] ml-auto px-1.5 py-0.5 rounded-sm font-mono ${
-            isSuccess ? 'bg-ide-success/10 text-ide-success' : 'bg-ide-error/10 text-ide-error'
-          }`}>
-            exit {data.exitCode}
-          </span>
-        )}
-        {data.durationMs !== undefined && (
-          <span className="text-[10px] text-muted-foreground font-mono">
-            {data.durationMs < 1000 ? `${data.durationMs}ms` : `${(data.durationMs / 1000).toFixed(1)}s`}
-          </span>
-        )}
       </div>
 
       {/* Error summary */}
       {data.errorSummary && (
-        <div className="px-3 py-1.5 text-xs text-ide-error bg-ide-error/5 border-b border-border/20">
+        <div className="text-[11px] text-[hsl(var(--ide-error))]/70 font-mono pl-3">
           {data.errorSummary}
         </div>
       )}
 
-      {/* Logs */}
+      {/* Logs — collapsed by default */}
       {data.logs && (
-        <div className="relative">
-          <pre className="px-3 py-2 text-[11px] font-mono text-foreground/80 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap bg-background/30">
-            {truncatedLogs}
-          </pre>
-          {data.logs.length > 500 && (
+        <Collapsible>
+          <div className="flex items-center gap-1">
+            <CollapsibleTrigger className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors duration-150">
+              <ChevronRight className="h-2.5 w-2.5 transition-transform duration-150 data-[state=open]:rotate-90" />
+              Logs
+            </CollapsibleTrigger>
             <button
-              onClick={() => setExpanded(prev => !prev)}
-              className="flex items-center gap-1 px-3 py-1 text-[10px] text-primary hover:text-primary/80 transition-colors w-full border-t border-border/20"
+              onClick={handleCopy}
+              className="text-muted-foreground/20 hover:text-muted-foreground transition-colors duration-150 p-0.5 ml-auto"
             >
-              {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              {expanded ? 'Collapse' : 'View Full Logs'}
+              {copied ? <Check className="h-2.5 w-2.5 text-[hsl(var(--ide-success))]" /> : <Copy className="h-2.5 w-2.5" />}
             </button>
-          )}
-        </div>
+          </div>
+          <CollapsibleContent>
+            <pre className="mt-1 px-3 py-2 text-[10px] font-mono text-muted-foreground/60 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap rounded-md bg-[hsl(var(--chat-block-bg))]">
+              {data.logs}
+            </pre>
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
-      {/* Actions */}
-      <div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-border/20 bg-muted/20">
-        {onRetry && !isRunnerUnavailable && (
-          <button
-            onClick={onRetry}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground rounded-sm hover:bg-accent/30 transition-colors"
-          >
-            <RotateCcw className="h-3 w-3" />
-            Retry
-          </button>
-        )}
-        {onSendToChat && (
-          <button
-            onClick={onSendToChat}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground rounded-sm hover:bg-accent/30 transition-colors"
-          >
-            <Send className="h-3 w-3" />
-            Send to Started
-          </button>
-        )}
+      {/* Single primary action */}
+      {primaryAction && (
         <button
-          onClick={() => {
-            if (data.logs) navigator.clipboard.writeText(data.logs);
-          }}
-          className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground rounded-sm hover:bg-accent/30 transition-colors ml-auto"
+          onClick={primaryAction.onClick}
+          className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground rounded-sm hover:bg-muted/40 transition-colors duration-150"
         >
-          <FileText className="h-3 w-3" />
-          Copy Logs
+          {primaryAction.icon}
+          {primaryAction.label}
         </button>
-      </div>
+      )}
     </div>
   );
 }

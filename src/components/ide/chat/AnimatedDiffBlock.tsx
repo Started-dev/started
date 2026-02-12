@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronRight, Copy, Check } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 
 interface AnimatedDiffBlockProps {
@@ -7,12 +8,22 @@ interface AnimatedDiffBlockProps {
   defaultCollapsed?: boolean;
 }
 
-export function AnimatedDiffBlock({ code, defaultCollapsed = false }: AnimatedDiffBlockProps) {
+export function AnimatedDiffBlock({ code, defaultCollapsed = true }: AnimatedDiffBlockProps) {
   const lines = code.split('\n');
-  const isLong = lines.length > 20;
-  const [collapsed, setCollapsed] = useState(defaultCollapsed || isLong);
   const [visible, setVisible] = useState(false);
-  const ref = useRef<HTMLPreElement>(null);
+  const [copied, setCopied] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Count stats
+  const adds = lines.filter(l => l.startsWith('+') && !l.startsWith('+++')).length;
+  const removes = lines.filter(l => l.startsWith('-') && !l.startsWith('---')).length;
+
+  // Extract filenames from diff headers
+  const fileNames = lines
+    .filter(l => l.startsWith('+++ ') || l.startsWith('--- '))
+    .map(l => l.replace(/^[+-]{3}\s+[ab]\//, '').replace(/^[+-]{3}\s+/, ''))
+    .filter(f => f !== '/dev/null');
+  const uniqueFiles = [...new Set(fileNames)];
 
   useEffect(() => {
     if (!ref.current) return;
@@ -24,43 +35,70 @@ export function AnimatedDiffBlock({ code, defaultCollapsed = false }: AnimatedDi
     return () => observer.disconnect();
   }, []);
 
-  const displayLines = collapsed ? lines.slice(0, 8) : lines;
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const summaryLabel = `${uniqueFiles.length || '?'} file${uniqueFiles.length !== 1 ? 's' : ''} · +${adds} −${removes}`;
 
   return (
-    <div className="rounded-md border border-border/30 bg-[hsl(var(--chat-block-bg))] overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1 border-b border-border/20">
-        <span className="text-[10px] text-muted-foreground font-mono">diff</span>
-        {isLong && (
+    <div ref={ref}>
+      <Collapsible defaultOpen={!defaultCollapsed}>
+        <div className="flex items-center justify-between">
+          <CollapsibleTrigger className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-150">
+            <ChevronRight className="h-3 w-3 transition-transform duration-150 data-[state=open]:rotate-90" />
+            <span>Diff</span>
+            <span className="text-muted-foreground/40 font-normal ml-1">{summaryLabel}</span>
+          </CollapsibleTrigger>
           <button
-            onClick={() => setCollapsed(prev => !prev)}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors duration-150"
+            onClick={handleCopy}
+            className="text-muted-foreground/30 hover:text-muted-foreground transition-colors duration-150 p-0.5"
           >
-            {collapsed ? <><ChevronDown className="h-3 w-3" /> View Full Diff</> : <><ChevronUp className="h-3 w-3" /> Collapse</>}
+            {copied ? <Check className="h-3 w-3 text-[hsl(var(--ide-success))]" /> : <Copy className="h-3 w-3" />}
           </button>
-        )}
-      </div>
-      <pre ref={ref} className="px-3 py-2 overflow-x-auto text-[11px] font-mono leading-relaxed">
-        <code>
-          {displayLines.map((line, i) => (
-            <div
-              key={i}
-              className={cn(
-                'transition-all duration-150',
-                visible ? 'animate-diff-line' : 'opacity-0',
-                line.startsWith('+') && !line.startsWith('+++') ? 'text-ide-success' :
-                line.startsWith('-') && !line.startsWith('---') ? 'text-ide-error opacity-60 line-through' :
-                line.startsWith('@@') ? 'text-ide-info' : 'text-muted-foreground'
-              )}
-              style={{ animationDelay: visible ? `${i * 30}ms` : '0ms' }}
-            >
-              {line}
-            </div>
-          ))}
-          {collapsed && isLong && (
-            <div className="text-muted-foreground/50 py-1">... {lines.length - 8} more lines</div>
-          )}
-        </code>
-      </pre>
+        </div>
+
+        <CollapsibleContent className="mt-1">
+          <div className="rounded-md bg-[hsl(var(--chat-block-bg))] overflow-hidden">
+            {/* File list */}
+            {uniqueFiles.length > 1 && (
+              <div className="px-3 py-1 border-b border-border/20 flex flex-wrap gap-x-3 gap-y-0.5">
+                {uniqueFiles.map((f, i) => (
+                  <span key={i} className="text-[10px] font-mono text-muted-foreground/50">{f}</span>
+                ))}
+              </div>
+            )}
+
+            <pre className="px-3 py-2 overflow-x-auto text-[11px] font-mono leading-relaxed max-h-[300px] overflow-y-auto">
+              <code>
+                {lines.map((line, i) => {
+                  // Skip raw diff headers
+                  if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('diff ')) return null;
+
+                  return (
+                    <div
+                      key={i}
+                      className={cn(
+                        'transition-all duration-150 flex',
+                        visible ? 'animate-diff-line' : 'opacity-0',
+                        line.startsWith('+') ? 'text-[hsl(var(--ide-success))]' :
+                        line.startsWith('-') ? 'text-[hsl(var(--ide-error))] opacity-60' :
+                        line.startsWith('@@') ? 'text-[hsl(var(--ide-info))] text-[10px]' : 'text-muted-foreground/60'
+                      )}
+                      style={{ animationDelay: visible ? `${Math.min(i * 20, 600)}ms` : '0ms' }}
+                    >
+                      <span className="w-4 shrink-0 text-right select-none text-muted-foreground/20 mr-2 text-[10px]">{i + 1}</span>
+                      <span className="flex-1">{line}</span>
+                    </div>
+                  );
+                })}
+              </code>
+            </pre>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }

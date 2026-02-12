@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, AtSign, FileCode, AlertCircle, Brain, X, Globe, Image, Link, Paperclip, Sparkles } from 'lucide-react';
+import { Send, Brain, Plus, AtSign, FileCode, AlertCircle, Globe, Image, Link, Paperclip, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useIDE } from '@/contexts/IDEContext';
 import { ContextChip } from '@/types/ide';
 import { PermissionPrompt } from './PermissionPrompt';
@@ -34,13 +35,13 @@ export function ChatPanel() {
   const [input, setInput] = useState('');
   const [chips, setChips] = useState<ContextChip[]>([]);
   const [agentMode, setAgentMode] = useState(false);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
   const [chipDialog, setChipDialog] = useState<{ type: 'url' | 'web'; value: string } | null>(null);
 
-  // Determine pulse state
   const isStreaming = chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role === 'assistant';
   const isAgentActive = agentRun?.status === 'running' || agentRun?.status === 'queued';
   const lastRunFailed = runs.length > 0 && runs[runs.length - 1].status === 'error';
@@ -49,7 +50,6 @@ export function ChatPanel() {
     : isStreaming ? 'processing' as const
     : 'idle' as const;
 
-  // Hesitation detection
   const hesitation = useHesitationDetection(
     lastRunFailed,
     pendingPatches.length > 0,
@@ -62,6 +62,7 @@ export function ChatPanel() {
 
   const addChip = (type: ContextChip['type']) => {
     hesitation.recordActivity();
+    setAttachMenuOpen(false);
     if (type === 'selection' && selectedText) {
       setChips(prev => [...prev.filter(c => c.type !== 'selection'), { type: 'selection', label: 'Selection', content: selectedText }]);
     } else if (type === 'file' && activeTabId) {
@@ -146,7 +147,6 @@ export function ChatPanel() {
     if (!msg.trim() && chips.length === 0) return;
     hesitation.recordActivity();
 
-    // Build skill context chips from active skills
     const skillChips: ContextChip[] = activeSkills
       .map(id => SKILLS_CATALOG.find(s => s.id === id))
       .filter(Boolean)
@@ -189,6 +189,13 @@ export function ChatPanel() {
   const pendingTools = toolCalls.filter(tc => tc.status === 'pending');
   const recentTools = toolCalls.filter(tc => tc.status !== 'pending').slice(-6);
 
+  // Chip display: max 3 visible, rest collapsed
+  const MAX_VISIBLE_CHIPS = 3;
+  const visibleChips = chips.slice(0, MAX_VISIBLE_CHIPS);
+  const hiddenChipCount = Math.max(0, chips.length - MAX_VISIBLE_CHIPS);
+  const [showAllChips, setShowAllChips] = useState(false);
+  const displayChips = showAllChips ? chips : visibleChips;
+
   return (
     <div className="h-full flex flex-col bg-[hsl(var(--chat-surface))]">
       <ChatHeader
@@ -203,19 +210,14 @@ export function ChatPanel() {
       />
 
       {/* Messages */}
-      <div className="flex-1 overflow-auto px-3 py-3 space-y-4">
+      <div className="flex-1 overflow-auto px-3 py-3 space-y-3">
         {chatMessages.map(msg => {
-          // Structured card types
-          if (msg.cardType === 'action') {
-            return <ActionCard key={msg.id} msg={msg} />;
-          }
+          if (msg.cardType === 'action') return <ActionCard key={msg.id} msg={msg} />;
           if (msg.cardType === 'result') {
             return (
               <ResultCard
-                key={msg.id}
-                msg={msg}
+                key={msg.id} msg={msg}
                 onRetry={msg.resultData?.runnerUnavailable ? undefined : () => {
-                  // Find the original command from nearby action cards
                   const actionMsg = chatMessages.find(m => m.cardType === 'action' && m.actionData);
                   if (actionMsg?.actionData) runCommand(actionMsg.actionData.command);
                 }}
@@ -230,21 +232,15 @@ export function ChatPanel() {
           if (msg.cardType === 'suggestion') {
             return (
               <SuggestionCard
-                key={msg.id}
-                msg={msg}
+                key={msg.id} msg={msg}
                 onAction={(action) => {
-                  if (action === 'connect_runner') {
-                    setActiveRightPanel('protocol');
-                  } else if (action === 'view_docs') {
-                    window.open('https://docs.started.dev/runners', '_blank');
-                  } else {
-                    sendMessage(action);
-                  }
+                  if (action === 'connect_runner') setActiveRightPanel('protocol');
+                  else if (action === 'view_docs') window.open('https://docs.started.dev/runners', '_blank');
+                  else sendMessage(action);
                 }}
               />
             );
           }
-          // Standard messages
           return msg.role === 'assistant' ? (
             <AssistantMessage key={msg.id} msg={msg} />
           ) : (
@@ -253,8 +249,7 @@ export function ChatPanel() {
         })}
 
         {recentTools.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tool Activity</div>
+          <div className="space-y-1">
             {recentTools.map(tc => <ToolCallDisplay key={tc.id} toolCall={tc} />)}
           </div>
         )}
@@ -310,29 +305,39 @@ export function ChatPanel() {
       {/* Suggestion cards */}
       <SuggestionCards inputLength={input.length} onSendMessage={(msg) => handleSend(msg)} />
 
-      {/* Context strip */}
+      {/* Context strip — minimal */}
       <ContextStrip />
 
-      {/* Active skills indicator */}
-      {activeSkills.length > 0 && (
-        <div className="px-3 pb-1">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-[10px] rounded-full border border-primary/20">
-            <Sparkles className="h-2.5 w-2.5" />
-            {activeSkills.length} skill{activeSkills.length !== 1 ? 's' : ''} active
-          </span>
-        </div>
-      )}
-
-      {/* Context chips */}
+      {/* Context chips — neutral, max 3 visible */}
       {chips.length > 0 && (
-        <div className="px-3 pb-1 flex flex-wrap gap-1">
-          {chips.map((chip, i) => (
-            <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/15 text-primary text-[11px] rounded-sm cursor-pointer hover:bg-primary/25 transition-colors duration-150" onClick={() => removeChip(i)}>
+        <div className="px-3 pb-1 flex flex-wrap gap-1 items-center">
+          {displayChips.map((chip, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded-sm cursor-pointer bg-muted/60 text-muted-foreground border border-border/40 hover:bg-muted hover:text-foreground transition-colors duration-150"
+              onClick={() => removeChip(i)}
+            >
               {chipIcon(chip.type)}
-              {chip.label}
-              <X className="h-2.5 w-2.5" />
+              <span className="truncate max-w-[80px]">{chip.label}</span>
+              <X className="h-2.5 w-2.5 opacity-50" />
             </span>
           ))}
+          {hiddenChipCount > 0 && !showAllChips && (
+            <button
+              onClick={() => setShowAllChips(true)}
+              className="text-[10px] px-1.5 py-0.5 rounded-sm bg-muted/40 text-muted-foreground hover:text-foreground transition-colors duration-150"
+            >
+              +{hiddenChipCount}
+            </button>
+          )}
+          {showAllChips && chips.length > MAX_VISIBLE_CHIPS && (
+            <button
+              onClick={() => setShowAllChips(false)}
+              className="text-[10px] px-1.5 py-0.5 rounded-sm text-muted-foreground hover:text-foreground transition-colors duration-150"
+            >
+              less
+            </button>
+          )}
         </div>
       )}
 
@@ -340,49 +345,65 @@ export function ChatPanel() {
       <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
       <input ref={attachInputRef} type="file" className="hidden" onChange={handleAttachmentUpload} />
 
-      {/* Input */}
-      <div className="border-t border-border p-3 space-y-2">
-        <div className="flex gap-1 flex-wrap">
-          <button onClick={() => addChip('selection')} className={`text-[10px] px-2 py-1 rounded-sm transition-colors duration-150 ${selectedText ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground'}`} disabled={!selectedText}>@selection</button>
-          <button onClick={() => addChip('file')} className={`text-[10px] px-2 py-1 rounded-sm transition-colors duration-150 ${activeTabId ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground'}`} disabled={!activeTabId}>@file</button>
-          <button onClick={() => addChip('errors')} className={`text-[10px] px-2 py-1 rounded-sm transition-colors duration-150 ${runs.length > 0 ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-muted text-muted-foreground'}`} disabled={runs.length === 0}>@errors</button>
-          <button onClick={() => addChip('url')} className="text-[10px] px-2 py-1 rounded-sm transition-colors duration-150 bg-primary/10 text-primary hover:bg-primary/20">@url</button>
-          <button onClick={() => addChip('web')} className="text-[10px] px-2 py-1 rounded-sm transition-colors duration-150 bg-primary/10 text-primary hover:bg-primary/20">@web</button>
-          <button onClick={() => addChip('image')} className="text-[10px] px-2 py-1 rounded-sm transition-colors duration-150 bg-primary/10 text-primary hover:bg-primary/20">@image</button>
-          <button onClick={() => addChip('attachment')} className="text-[10px] px-2 py-1 rounded-sm transition-colors duration-150 bg-primary/10 text-primary hover:bg-primary/20">@attach</button>
-          <div className="flex-1" />
-          <ModelSelector value={selectedModel} onChange={setSelectedModel} />
-          <button
-            onClick={() => setAgentMode(prev => !prev)}
-            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-sm transition-colors duration-150 ${
-              agentMode ? 'bg-ide-warning/15 text-ide-warning' : 'bg-muted text-muted-foreground hover:bg-accent'
-            }`}
-          >
-            <Brain className="h-3 w-3" />
-            {agentMode ? 'Agent ON' : 'Agent'}
-          </button>
-        </div>
+      {/* Input area — minimal command bar */}
+      <div className="border-t border-border/50 p-2.5">
         <div className="flex gap-2 items-end">
+          {/* + attach menu */}
+          <Popover open={attachMenuOpen} onOpenChange={setAttachMenuOpen}>
+            <PopoverTrigger asChild>
+              <button className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150 shrink-0 self-end mb-0.5">
+                <Plus className="h-4 w-4" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="start" className="w-40 p-1" sideOffset={8}>
+              <div className="flex flex-col">
+                <AttachMenuItem icon={<AtSign className="h-3.5 w-3.5" />} label="Selection" disabled={!selectedText} onClick={() => addChip('selection')} />
+                <AttachMenuItem icon={<FileCode className="h-3.5 w-3.5" />} label="Active file" disabled={!activeTabId} onClick={() => addChip('file')} />
+                <AttachMenuItem icon={<AlertCircle className="h-3.5 w-3.5" />} label="Errors" disabled={runs.length === 0} onClick={() => addChip('errors')} />
+                <AttachMenuItem icon={<Link className="h-3.5 w-3.5" />} label="URL" onClick={() => addChip('url')} />
+                <AttachMenuItem icon={<Globe className="h-3.5 w-3.5" />} label="Web search" onClick={() => addChip('web')} />
+                <AttachMenuItem icon={<Image className="h-3.5 w-3.5" />} label="Image" onClick={() => addChip('image')} />
+                <AttachMenuItem icon={<Paperclip className="h-3.5 w-3.5" />} label="File" onClick={() => addChip('attachment')} />
+              </div>
+            </PopoverContent>
+          </Popover>
+
           <textarea
             ref={inputRef}
             value={input}
             onChange={e => { setInput(e.target.value); hesitation.recordActivity(); }}
             onKeyDown={handleKeyDown}
-            placeholder={agentMode ? 'Describe a goal for the agent...' : 'Ask Started...'}
-            className="flex-1 bg-input text-foreground text-sm px-3 py-2 rounded-md border border-border resize-none outline-none focus:border-primary transition-colors duration-150 min-h-[36px] max-h-[120px] font-sans"
+            placeholder={agentMode ? 'Describe a goal...' : 'Ask Started...'}
+            className="flex-1 bg-transparent text-foreground text-sm px-2 py-1.5 rounded-md border-none resize-none outline-none min-h-[32px] max-h-[120px] font-sans placeholder:text-muted-foreground/50"
             rows={1}
           />
-          <button
-            onClick={() => handleSend()}
-            disabled={!input.trim() && chips.length === 0}
-            className={`p-2 rounded-md transition-all duration-150 shrink-0 disabled:opacity-30 ${
-              agentMode
-                ? 'bg-ide-warning text-background hover:bg-ide-warning/90'
-                : 'bg-primary text-primary-foreground hover:bg-primary/90'
-            }`}
-          >
-            {agentMode ? <Brain className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-          </button>
+
+          <div className="flex items-center gap-1 shrink-0 self-end mb-0.5">
+            <ModelSelector value={selectedModel} onChange={setSelectedModel} />
+            <button
+              onClick={() => setAgentMode(prev => !prev)}
+              className={`p-1.5 rounded-md transition-colors duration-150 ${
+                agentMode ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              }`}
+              title={agentMode ? 'Agent mode on' : 'Agent mode'}
+            >
+              <Brain className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => handleSend()}
+              disabled={!input.trim() && chips.length === 0}
+              className="p-1.5 rounded-md transition-all duration-150 shrink-0 disabled:opacity-20 text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        {/* Hint row */}
+        <div className="flex items-center justify-between px-1 pt-1">
+          <span className="text-[9px] text-muted-foreground/40">⏎ send · ⌘K commands</span>
+          {activeSkills.length > 0 && (
+            <span className="text-[9px] text-muted-foreground/50">{activeSkills.length} skill{activeSkills.length !== 1 ? 's' : ''}</span>
+          )}
         </div>
       </div>
 
@@ -420,23 +441,34 @@ export function ChatPanel() {
 
 // ─── Sub-components ───
 
+function AttachMenuItem({ icon, label, disabled, onClick }: { icon: React.ReactNode; label: string; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-foreground/80 hover:bg-muted/60 rounded-sm transition-colors duration-150 disabled:opacity-30 disabled:pointer-events-none w-full text-left"
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 function UserMessage({ msg, chipIcon }: { msg: import('@/types/ide').ChatMessage; chipIcon: (type: string) => React.ReactNode }) {
   return (
-    <div className="animate-fade-in flex justify-end">
+    <div className="animate-fade-in flex flex-col items-end gap-1">
       {msg.contextChips && msg.contextChips.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-1">
-          {msg.contextChips.map((chip, i) => (
-            <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] rounded-sm">
+        <div className="flex flex-wrap gap-1 justify-end">
+          {msg.contextChips.filter(c => !c.label.startsWith('Skill:')).map((chip, i) => (
+            <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-muted/40 text-muted-foreground text-[10px] rounded-sm">
               {chipIcon(chip.type)}
               {chip.label}
             </span>
           ))}
         </div>
       )}
-      <div className="bg-primary/10 text-foreground rounded-lg px-3 py-2 max-w-[85%]">
-        <div className="whitespace-pre-wrap font-mono text-xs">
-          {msg.content}
-        </div>
+      <div className="bg-muted/40 text-foreground rounded-lg px-3 py-2 max-w-[85%]">
+        <div className="whitespace-pre-wrap font-mono text-xs">{msg.content}</div>
       </div>
     </div>
   );
