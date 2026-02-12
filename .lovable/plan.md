@@ -1,28 +1,36 @@
 
 
-# Add GitHub OAuth Secrets
+# Fix: Auto-save AI/Agent file changes to snapshot system
 
-## What's Needed
+## Problem
+When the AI or Agent creates or modifies files (via patches or code blocks), the changes are saved to the database (`project_files` table) but NOT synced to the content-addressed snapshot system. On page reload, the IDE loads from the CA snapshot (which is stale), so all AI-generated changes disappear.
 
-Two secrets must be added to the backend so the `github-oauth` edge function can authenticate with GitHub:
+## Root Cause
+- Manual editor edits use `updateFileContent`, which correctly calls both `saveFile()` (database) and `caSnapshots.syncToSnapshot()` (snapshot system).
+- AI-generated changes use `autoApplyParsedPatches` and `autoCreateFileBlocks`, which only call `saveFile()` -- they never call `syncToSnapshot()`.
+- On reload, the IDE tries the CA snapshot first. Since it was never updated with AI changes, it restores an old version.
 
-1. **GITHUB_CLIENT_ID** -- Your OAuth App's Client ID
-2. **GITHUB_CLIENT_SECRET** -- Your OAuth App's Client Secret
+## Solution
 
-## Steps
+### 1. Sync to CA snapshots after AI patch application
+In `IDEContext.tsx`, after `autoApplyParsedPatches` is called (around line 934), add a call to `caSnapshots.syncToSnapshot(filesRef.current)` to persist the updated file state.
 
-### 1. Add `GITHUB_CLIENT_ID` secret
-- Store the Client ID as a backend secret named `GITHUB_CLIENT_ID`
+### 2. Sync to CA snapshots after AI file block creation
+After `autoCreateFileBlocks` is called (around line 943), add the same `caSnapshots.syncToSnapshot(filesRef.current)` call.
 
-### 2. Add `GITHUB_CLIENT_SECRET` secret
-- Store the Client Secret as a backend secret named `GITHUB_CLIENT_SECRET`
+### 3. Sync after agent step file changes
+Check the agent loop (where agent steps apply patches) and ensure `syncToSnapshot` is also called there.
 
-### 3. Verify the fix
-- After secrets are set, test the "Connect with GitHub" button in the IDE
-- The `github-oauth` edge function should now return a valid `client_id` instead of an empty string
-- The OAuth popup should redirect to GitHub's authorization page
+### 4. Add a beforeunload flush for file persistence
+Currently only conversation persistence has a `beforeunload` handler. Add one for file saves to ensure pending debounced saves are flushed when the tab closes.
 
-## Important Notes
-- Make sure your GitHub OAuth App's callback URL is set to: `https://started.lovable.app/auth/github/callback`
-- No code changes are needed -- the `github-oauth` edge function already reads these environment variables
+## Technical Details
+
+Changes are limited to `src/contexts/IDEContext.tsx`:
+
+- In the `onDone` callback of `streamChat` (around lines 923-943): after applying patches and creating file blocks, schedule a `syncToSnapshot` call with a small delay to ensure `setFiles` state updates have been processed.
+- In the agent orchestrator's step completion handler: add the same sync call.
+- Add a `beforeunload` listener that calls `caSnapshots.createCASnapshot(filesRef.current, 'Tab close flush')` to ensure the latest state is persisted.
+
+This is a targeted fix -- no new files, no new dependencies, just adding sync calls where they're missing.
 
