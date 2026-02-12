@@ -154,8 +154,15 @@ export function ChatPanel() {
       .map(skill => ({
         type: 'attachment' as const,
         label: `Skill: ${skill!.name}`,
-        content: `[Agent Skill: ${skill!.name}]\nSource: ${skill!.source}\nCategory: ${skill!.category}\n\n${skill!.description}\n\nReference: ${skill!.url}`,
+        content: skill!.systemPrompt,
       }));
+
+    // Build dedicated skill context string for system-level injection
+    const skillContextStr = activeSkills
+      .map(id => SKILLS_CATALOG.find(s => s.id === id))
+      .filter(Boolean)
+      .map(s => `[Skill: ${s!.name}]\n${s!.systemPrompt}`)
+      .join('\n\n');
 
     const allChips = [...chips, ...skillChips];
 

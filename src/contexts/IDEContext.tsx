@@ -911,6 +911,10 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
         if (chip.type === 'selection') contextParts.push(`[Selected code]\n${chip.content}`);
         else if (chip.type === 'file') contextParts.push(`[File: ${chip.label}]\n${chip.content}`);
         else if (chip.type === 'errors') contextParts.push(`[Last run errors]\n${chip.content}`);
+        else if (chip.type === 'attachment') contextParts.push(`[${chip.label}]\n${chip.content}`);
+        else if (chip.type === 'url') contextParts.push(`[URL: ${chip.label}]\n${chip.content}`);
+        else if (chip.type === 'web') contextParts.push(`[Web: ${chip.label}]\n${chip.content}`);
+        else if (chip.type === 'image') contextParts.push(`[Image: ${chip.label}]`);
       }
     }
     const contextStr = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
@@ -930,10 +934,15 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
     let assistantContent = '';
     setChatMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: '', timestamp: new Date() }]);
 
+    // Extract skillContext from attachment chips (skills pass systemPrompt as content)
+    const skillChips = chips?.filter(c => c.type === 'attachment' && c.label.startsWith('Skill: ')) || [];
+    const skillContextStr = skillChips.map(c => `[${c.label}]\n${c.content}`).join('\n\n');
+
     streamChat({
       messages: apiMessages,
       context: contextStr,
       model: selectedModel,
+      skillContext: skillContextStr || undefined,
       mcpTools: enabledMcpTools.length > 0 ? enabledMcpTools : undefined,
       onDelta: (chunk) => {
         assistantContent += chunk;
