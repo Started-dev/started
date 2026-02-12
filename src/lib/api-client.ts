@@ -13,6 +13,7 @@ interface StreamChatOptions {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   context?: string;
   model?: string;
+  skillContext?: string;
   mcpTools?: Array<{ server: string; name: string; description: string }>;
   onDelta: (text: string) => void;
   onDone: () => void;
@@ -20,7 +21,7 @@ interface StreamChatOptions {
   signal?: AbortSignal;
 }
 
-export async function streamChat({ messages, context, model, mcpTools, onDelta, onDone, onError, signal }: StreamChatOptions) {
+export async function streamChat({ messages, context, model, skillContext, mcpTools, onDelta, onDone, onError, signal }: StreamChatOptions) {
   const token = await getAuthToken();
   const resp = await fetch(`${SUPABASE_URL}/functions/v1/started`, {
     method: 'POST',
@@ -28,7 +29,7 @@ export async function streamChat({ messages, context, model, mcpTools, onDelta, 
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ messages, context, model, mcp_tools: mcpTools }),
+    body: JSON.stringify({ messages, context, model, skill_context: skillContext || undefined, mcp_tools: mcpTools }),
     signal,
   });
 

@@ -267,7 +267,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages, context, project_id, model, mcp_tools } = await req.json();
+    const { messages, context, project_id, model, mcp_tools, skill_context } = await req.json();
     const selectedModel = model || "started/started-ai";
 
     // ─── Auth check ───
@@ -300,8 +300,11 @@ serve(async (req) => {
       }
     }
 
-    // ─── Build system prompt ───
-    const systemPrompt = getSystemPrompt(selectedModel);
+    // ─── Build system prompt (with skill context injection) ───
+    let systemPrompt = getSystemPrompt(selectedModel);
+    if (skill_context && typeof skill_context === "string" && skill_context.trim()) {
+      systemPrompt += `\n\nACTIVE SKILLS (follow these guidelines strictly):\n${skill_context}`;
+    }
 
     // ─── Context & MCP tool prompts ───
     let contextPrompt: string | null = null;
