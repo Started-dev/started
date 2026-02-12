@@ -354,6 +354,17 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
   const filesRef = useRef(files);
   useEffect(() => { filesRef.current = files; }, [files]);
 
+  // Flush pending file saves to CA snapshot on tab close
+  useEffect(() => {
+    const flush = () => {
+      if (projectId && filesRef.current.length > 0) {
+        caSnapshots.createCASnapshot(filesRef.current, 'Tab close flush');
+      }
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
+  }, [projectId, caSnapshots]);
+
   // ─── Local conversations (optimistic, works without auth) ───
   const [localConversations, setLocalConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string>('');
@@ -942,7 +953,12 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
         // 2. Try file blocks (```lang filepath)
         autoCreateFileBlocks(assistantContent);
 
-        // 3. Generate AI title after first assistant reply
+        // 3. Sync to CA snapshots so AI changes persist across reloads
+        setTimeout(() => {
+          caSnapshots.syncToSnapshot(filesRef.current);
+        }, 500);
+
+        // 4. Generate AI title after first assistant reply
         if (activeConversationId && !titleGeneratedRef.current.has(activeConversationId)) {
           setChatMessages(prev => {
             const userMsgs = prev.filter(m => m.role === 'user');
@@ -1261,6 +1277,11 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
           setPendingPatches(prev => prev.map(p =>
             p.id === patchId ? { ...p, status: success ? 'applied' : 'failed', error: success ? undefined : 'Some hunks failed' } : p
           ));
+
+          // Sync to CA snapshots after agent patch
+          setTimeout(() => {
+            caSnapshots.syncToSnapshot(filesRef.current);
+          }, 500);
         }
       },
       onRunCommand: (command, summary) => {
@@ -1279,6 +1300,8 @@ export function IDEProvider({ children }: { children: React.ReactNode }) {
         setAgentRun(prev => prev ? { ...prev, status: 'completed', completedAt: new Date() } : null);
         localStorage.removeItem('agent_active_run_id');
         agentServerRunIdRef.current = null;
+        // Final CA snapshot sync after agent completes
+        caSnapshots.createCASnapshot(filesRef.current, 'Agent run completed');
       },
       onMCPCall: (server, tool, input) => {
         addStep({
