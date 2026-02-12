@@ -1,4 +1,4 @@
-import { Plus, X, MessageSquare } from 'lucide-react';
+import { Plus, X, MessageSquare, Sparkles } from 'lucide-react';
 import { SystemPulse } from './SystemPulse';
 import startedLogo from '@/assets/started-logo.png';
 import type { Conversation } from '@/types/ide';
@@ -16,6 +16,8 @@ interface ChatHeaderProps {
   onSwitchConversation: (id: string) => void;
   onNewConversation: () => void;
   onDeleteConversation: (id: string) => void;
+  activeSkillCount?: number;
+  onOpenSkills?: () => void;
 }
 
 export function ChatHeader({
@@ -27,6 +29,8 @@ export function ChatHeader({
   onSwitchConversation,
   onNewConversation,
   onDeleteConversation,
+  activeSkillCount = 0,
+  onOpenSkills,
 }: ChatHeaderProps) {
   const activeTabRef = useRef<HTMLDivElement>(null);
 
@@ -41,6 +45,15 @@ export function ChatHeader({
         <img src={startedLogo} alt="Started" className="h-4 w-4 rounded-full" />
         <span className="text-xs font-semibold uppercase tracking-wider">Started</span>
         <div className="flex-1" />
+        {activeSkillCount > 0 && (
+          <button
+            onClick={onOpenSkills}
+            className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded-sm hover:bg-primary/20 transition-colors duration-150"
+          >
+            <Sparkles className="h-2.5 w-2.5" />
+            {activeSkillCount} skill{activeSkillCount !== 1 ? 's' : ''}
+          </button>
+        )}
         {pendingToolCount > 0 && (
           <span className="text-[10px] px-1.5 py-0.5 bg-ide-warning/15 text-ide-warning rounded-sm animate-pulse">
             {pendingToolCount} pending

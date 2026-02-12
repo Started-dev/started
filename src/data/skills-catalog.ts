@@ -1,7 +1,7 @@
 // ─── Skills Catalog ───
-// Curated from awesome-agent-skills, SkillsMP, and ClawHub
+// Built-in agent skills with functional system prompts
 
-export type SkillSource = 'awesome-agent-skills' | 'skillsmp' | 'clawhub';
+export type SkillSource = 'awesome-agent-skills' | 'skillsmp' | 'clawhub' | 'built-in';
 export type SkillTier = 'official' | 'community' | 'marketplace';
 export type SkillCategory =
   | 'Development'

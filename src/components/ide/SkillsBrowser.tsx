@@ -18,9 +18,10 @@ const tierColors: Record<string, string> = {
 };
 
 const sourceLabels: Record<string, string> = {
-  'awesome-agent-skills': 'Awesome',
-  'skillsmp': 'SkillsMP',
-  'clawhub': 'ClawHub',
+  'awesome-agent-skills': 'Built-in',
+  'skillsmp': 'Built-in',
+  'clawhub': 'Built-in',
+  'built-in': 'Built-in',
 };
 
 export function SkillsBrowser({ onClose, activeSkills, onToggleSkill }: SkillsBrowserProps) {
@@ -136,40 +137,56 @@ export function SkillsBrowser({ onClose, activeSkills, onToggleSkill }: SkillsBr
 }
 
 function SkillCard({ skill, isActive, onToggle }: { skill: Skill; isActive: boolean; onToggle: () => void }) {
+  const [showPrompt, setShowPrompt] = useState(false);
+
   return (
-    <div className={`flex items-start gap-3 p-3 rounded-md border transition-colors ${
+    <div className={`flex flex-col p-3 rounded-md border transition-colors ${
       isActive ? 'border-primary/40 bg-primary/5' : 'border-border bg-card hover:bg-accent/30'
     }`}>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium text-foreground truncate">{skill.name}</span>
-          <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${tierColors[skill.tier]}`}>
-            {skill.tier}
-          </Badge>
-          <span className="text-[9px] text-muted-foreground">{sourceLabels[skill.source]}</span>
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm font-medium text-foreground truncate">{skill.name}</span>
+            <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${tierColors[skill.tier]}`}>
+              {skill.tier}
+            </Badge>
+            <span className="text-[9px] text-muted-foreground">{sourceLabels[skill.source] || 'Built-in'}</span>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">{skill.description}</p>
+          <div className="flex items-center gap-1 mt-1.5">
+            <span className="text-[9px] text-muted-foreground/70">{skill.author}</span>
+            <span className="text-[9px] text-muted-foreground/40">·</span>
+            {skill.tags.slice(0, 3).map(tag => (
+              <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-muted rounded-sm text-muted-foreground">{tag}</span>
+            ))}
+          </div>
         </div>
-        <p className="text-xs text-muted-foreground leading-relaxed">{skill.description}</p>
-        <div className="flex items-center gap-1 mt-1.5">
-          <span className="text-[9px] text-muted-foreground/70">{skill.author}</span>
-          <span className="text-[9px] text-muted-foreground/40">·</span>
-          {skill.tags.slice(0, 3).map(tag => (
-            <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-muted rounded-sm text-muted-foreground">{tag}</span>
-          ))}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setShowPrompt(prev => !prev)}
+            className="p-1 text-muted-foreground hover:text-foreground transition-colors text-[9px] font-mono"
+            title="Preview system prompt"
+          >
+            {showPrompt ? 'Hide' : '{ }'}
+          </button>
+          <a href={skill.url} target="_blank" rel="noopener noreferrer" className="p-1 text-muted-foreground hover:text-foreground transition-colors">
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+          <Button
+            variant={isActive ? 'default' : 'outline'}
+            size="icon"
+            className="h-7 w-7"
+            onClick={onToggle}
+          >
+            {isActive ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+          </Button>
         </div>
       </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <a href={skill.url} target="_blank" rel="noopener noreferrer" className="p-1 text-muted-foreground hover:text-foreground transition-colors">
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-        <Button
-          variant={isActive ? 'default' : 'outline'}
-          size="icon"
-          className="h-7 w-7"
-          onClick={onToggle}
-        >
-          {isActive ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-        </Button>
-      </div>
+      {showPrompt && (
+        <div className="mt-2 p-2 rounded-sm bg-muted/50 border border-border/30 text-[10px] font-mono text-muted-foreground leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
+          {skill.systemPrompt}
+        </div>
+      )}
     </div>
   );
 }
