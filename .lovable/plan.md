@@ -1,36 +1,71 @@
 
 
-# Fix: Auto-save AI/Agent file changes to snapshot system
+# Improve Landing Page UX, Screenshot Visibility, and Mobile Experience
 
-## Problem
-When the AI or Agent creates or modifies files (via patches or code blocks), the changes are saved to the database (`project_files` table) but NOT synced to the content-addressed snapshot system. On page reload, the IDE loads from the CA snapshot (which is stale), so all AI-generated changes disappear.
+## Current Issues
+- The IDE screenshot overflows with negative margins, causing horizontal scroll risk on smaller screens
+- On mobile, the screenshot is tiny and hard to appreciate -- it just looks like a blurry strip
+- No perspective/3D effect to make the screenshot feel premium and elevated
+- The hero section has excessive whitespace on mobile before the screenshot
+- The nav bar doesn't feel native/app-like on mobile (too much padding, "Sign In" wraps)
+- The CTA button and text spacing aren't optimized per breakpoint
+- No smooth scroll or snap behavior for mobile to give that "app-like" feel
 
-## Root Cause
-- Manual editor edits use `updateFileContent`, which correctly calls both `saveFile()` (database) and `caSnapshots.syncToSnapshot()` (snapshot system).
-- AI-generated changes use `autoApplyParsedPatches` and `autoCreateFileBlocks`, which only call `saveFile()` -- they never call `syncToSnapshot()`.
-- On reload, the IDE tries the CA snapshot first. Since it was never updated with AI changes, it restores an old version.
+## Changes
 
-## Solution
+### 1. Hero Component (`src/components/Hero.tsx`) -- Major Rewrite
 
-### 1. Sync to CA snapshots after AI patch application
-In `IDEContext.tsx`, after `autoApplyParsedPatches` is called (around line 934), add a call to `caSnapshots.syncToSnapshot(filesRef.current)` to persist the updated file state.
+**Screenshot presentation upgrade:**
+- Replace the raw overflow approach with a CSS perspective/3D tilt effect that makes the IDE screenshot look like it's floating above the page
+- Add a subtle orange gradient glow beneath the screenshot for depth
+- Use responsive sizing: full-width on mobile (no negative margins), slightly overflowed on desktop for impact
+- Add a soft shadow and brighter orange border glow on hover
 
-### 2. Sync to CA snapshots after AI file block creation
-After `autoCreateFileBlocks` is called (around line 943), add the same `caSnapshots.syncToSnapshot(filesRef.current)` call.
+**Mobile-first text sizing:**
+- Headline: `text-4xl` on mobile, `text-5xl` on sm, `text-6xl` on md, `text-7xl` on lg
+- Reduce vertical spacing on mobile (`py-12` instead of `py-20`, `mt-12` instead of `mt-20`)
+- Center-align text and CTA on mobile, left-align on sm+
 
-### 3. Sync after agent step file changes
-Check the agent loop (where agent steps apply patches) and ensure `syncToSnapshot` is also called there.
+**CTA button:**
+- Full-width on mobile with larger touch target (`h-12`)
+- Auto-width on sm+ screens
+- Add a subtle scale transition on press for mobile tactile feel
 
-### 4. Add a beforeunload flush for file persistence
-Currently only conversation persistence has a `beforeunload` handler. Add one for file saves to ensure pending debounced saves are flushed when the tab closes.
+**Screenshot container:**
+- On mobile: no negative margins, rounded corners, contained within padding
+- On tablet: slight overflow with perspective tilt
+- On desktop: larger overflow with stronger perspective effect
+- Add a fade-to-background gradient at the bottom edge so it blends into the page
+
+### 2. Auth Page (`src/pages/Auth.tsx`) -- Mobile Navigation Polish
+
+**Nav bar mobile optimization:**
+- Reduce padding on mobile (`px-4 py-3` instead of `px-6 py-4`)
+- Smaller logo on mobile (`h-7` instead of `h-10`)
+- Ensure "Sign In" doesn't wrap -- use compact spacing
+- Add `mt-2` on mobile instead of `mt-3`
+
+**Auth modal on mobile:**
+- Make the modal slide up from the bottom on mobile (like a native bottom sheet) using framer-motion
+- Full-width with rounded top corners only
+- On desktop, keep the centered modal behavior
+
+### 3. Global Mobile Polish (`src/index.css`)
+
+- Add `-webkit-tap-highlight-color: transparent` and `touch-action: manipulation` for native feel
+- Ensure `overscroll-behavior: none` to prevent pull-to-refresh bounce
+- Add smooth scroll behavior
 
 ## Technical Details
 
-Changes are limited to `src/contexts/IDEContext.tsx`:
+### Files Modified
+1. **`src/components/Hero.tsx`** -- Responsive redesign with perspective screenshot, mobile-first sizing, centered mobile layout
+2. **`src/pages/Auth.tsx`** -- Mobile nav polish, bottom-sheet auth modal on mobile using framer-motion
+3. **`src/index.css`** -- Mobile touch optimizations (tap highlight, overscroll, smooth scroll)
 
-- In the `onDone` callback of `streamChat` (around lines 923-943): after applying patches and creating file blocks, schedule a `syncToSnapshot` call with a small delay to ensure `setFiles` state updates have been processed.
-- In the agent orchestrator's step completion handler: add the same sync call.
-- Add a `beforeunload` listener that calls `caSnapshots.createCASnapshot(filesRef.current, 'Tab close flush')` to ensure the latest state is persisted.
-
-This is a targeted fix -- no new files, no new dependencies, just adding sync calls where they're missing.
+### Key Implementation Patterns
+- Use Tailwind responsive prefixes (`sm:`, `md:`, `lg:`) consistently for all breakpoints
+- Use framer-motion `AnimatePresence` for the auth modal with different animations per viewport
+- Use CSS `perspective` and `rotateX` for the 3D screenshot tilt effect
+- Use the existing `useIsMobile` hook to toggle between bottom-sheet and centered modal behavior
 
