@@ -17,4 +17,21 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('monaco-editor') || id.includes('@monaco-editor')) return 'monaco';
+          if (id.includes('@radix-ui')) return 'radix';
+          if (id.includes('framer-motion')) return 'motion';
+          if (id.includes('recharts')) return 'charts';
+          if (id.includes('ethers')) return 'ethers';
+          if (id.includes('react')) return 'react-vendor';
+          return 'vendor';
+        },
+      },
+    },
+  },
 }));
