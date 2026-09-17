@@ -1,0 +1,46 @@
+{
+  "id": "base-erc20",
+  "name": "base-erc20",
+  "version": "0.2.4",
+  "tagline": "Foundry ERC-20 with tests. Name, symbol, supply — verified before anyone deploys.",
+  "description": "Writes a minimal Token.sol and Token.t.sol. No mainnet. No wallet.",
+  "category": "onchain",
+  "license": "MIT",
+  "runtime": { "image": "started/runtime-foundry:1", "timeout_s": 300 },
+  "tools": { "allow": ["fs", "shell", "forge"], "deny": ["wallet.sign", "net.unrestricted"] },
+  "inputs": [
+    { "id": "token_name", "label": "Token name", "type": "string", "default": "Started" },
+    { "id": "symbol", "label": "Symbol", "type": "string", "default": "STRT" },
+    { "id": "chain", "label": "Target chain", "type": "enum", "enum": ["anvil", "base", "monad"], "default": "anvil" }
+  ],
+  "policy": ["Forge test only — no broadcast", "Wallet signing denied", "Network default off"],
+  "harness": [
+    { "id": "sol", "name": "Token.sol exists", "kind": "exists", "path": "src/Token.sol" },
+    { "id": "name", "name": "Contract sets a name", "kind": "contains", "path": "src/Token.sol", "pattern": "string public name" },
+    { "id": "erc", "name": "Transfer is implemented", "kind": "contains", "path": "src/Token.sol", "pattern": "function transfer" },
+    { "id": "test", "name": "Foundry test exists", "kind": "exists", "path": "test/Token.t.sol" },
+    { "id": "forge", "name": "Test uses forge-std", "kind": "contains", "path": "test/Token.t.sol", "pattern": "forge-std/Test.sol" }
+  ],
+  "initial": {
+    "foundry.toml": "[profile.default]\nsrc = \"src\"\nout = \"out\"\ntest = \"test\"\nsolc = \"0.8.24\"\n",
+    "src/Token.sol": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n\ncontract Token {\n    // Incomplete. Run the Start.\n}\n",
+    "README.md": "# Token\n\nIncomplete Start.\n"
+  },
+  "graph": [
+    {
+      "op": "write",
+      "path": "src/Token.sol",
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n\ncontract Token {\n    string public name = \"{{token_name}}\";\n    string public symbol = \"{{symbol}}\";\n    uint8 public decimals = 18;\n    uint256 public totalSupply;\n    mapping(address => uint256) public balanceOf;\n    constructor() {\n        totalSupply = 1_000_000 * 10 ** uint256(decimals);\n        balanceOf[msg.sender] = totalSupply;\n    }\n    function transfer(address to, uint256 value) external returns (bool) {\n        require(balanceOf[msg.sender] >= value, \"insufficient\");\n        balanceOf[msg.sender] -= value;\n        balanceOf[to] += value;\n        return true;\n    }\n}\n"
+    },
+    {
+      "op": "write",
+      "path": "test/Token.t.sol",
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\nimport {Test} from \"forge-std/Test.sol\";\nimport {Token} from \"../src/Token.sol\";\ncontract TokenTest is Test {\n    Token token;\n    function setUp() public { token = new Token(); }\n    function test_metadata() public view {\n        assertEq(token.name(), \"{{token_name}}\");\n        assertEq(token.symbol(), \"{{symbol}}\");\n    }\n}\n"
+    },
+    {
+      "op": "write",
+      "path": "README.md",
+      "content": "# {{token_name}} ({{symbol}})\n\nMinimal ERC-20 from the **base-erc20** Start. Intended chain: {{chain}}.\n\nThis kit never broadcasts.\n"
+    }
+  ]
+}
