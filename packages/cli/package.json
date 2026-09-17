@@ -1,0 +1,11 @@
+{
+  "name": "@started/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "started": "./bin/started.mjs" },
+  "scripts": { "test": "node --test src/cli.test.js" },
+  "dependencies": {
+    "@started/engine": "0.1.0",
+    "@started/spec": "0.1.0"
+  }
+}
