@@ -1,0 +1,11 @@
+{
+  "name": "started",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "started": "node packages/cli/bin/started.mjs"
+  },
+  "engines": { "node": ">=20" }
+}
