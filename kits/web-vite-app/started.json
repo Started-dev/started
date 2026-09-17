@@ -1,0 +1,45 @@
+{
+  "id": "web-vite-app",
+  "name": "web-vite-app",
+  "version": "0.3.1",
+  "tagline": "A Vite + React app that ships with a passing test, not a blank canvas.",
+  "description": "Scaffolds a TypeScript Vite app, writes a real heading and a test that asserts it, then refuses to finish unless the harness is green.",
+  "category": "web",
+  "license": "MIT",
+  "runtime": { "image": "started/runtime-node:20", "timeout_s": 180 },
+  "tools": { "allow": ["fs", "shell", "git"], "deny": ["net.unrestricted", "wallet.sign"] },
+  "inputs": [
+    { "id": "app_name", "label": "App name", "type": "string", "default": "Harbor" },
+    { "id": "tagline", "label": "Tagline", "type": "string", "default": "Ship something real." }
+  ],
+  "policy": ["Writes only under src/, index.html, package.json, README.md", "Network off during harness", "No deploy, no git push"],
+  "harness": [
+    { "id": "pkg", "name": "package.json declares react", "kind": "contains", "path": "package.json", "pattern": "\"react\"" },
+    { "id": "app", "name": "App.tsx renders an h1", "kind": "regex", "path": "src/App.tsx", "pattern": "<h1[\\s\\S]*</h1>" },
+    { "id": "test", "name": "App.test.ts exists", "kind": "exists", "path": "src/App.test.ts" },
+    { "id": "assert", "name": "Test asserts the heading", "kind": "contains", "path": "src/App.test.ts", "pattern": "getByRole" },
+    { "id": "readme", "name": "README documents the Start", "kind": "contains", "path": "README.md", "pattern": "Harness" }
+  ],
+  "initial": {
+    "package.json": "{\n  \"name\": \"demo-project\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"dependencies\": { \"react\": \"^18.2.0\", \"react-dom\": \"^18.2.0\" }\n}\n",
+    "src/App.tsx": "export default function App() {\n  // TODO: the Start has not run. Harness will fail.\n  return <main />;\n}\n",
+    "README.md": "# demo-project\n\nIncomplete Start. Run the engine to finish.\n"
+  },
+  "graph": [
+    {
+      "op": "write",
+      "path": "src/App.tsx",
+      "content": "export default function App() {\n  return (\n    <main>\n      <p>started.dev</p>\n      <h1>{{app_name}}</h1>\n      <p>{{tagline}}</p>\n    </main>\n  );\n}\n"
+    },
+    {
+      "op": "write",
+      "path": "src/App.test.ts",
+      "content": "import { describe, it, expect } from \"vitest\";\nimport { render } from \"@testing-library/react\";\nimport App from \"./App\";\n\ndescribe(\"App\", () => {\n  it(\"renders the product heading\", () => {\n    const { getByRole } = render(<App />);\n    expect(getByRole(\"heading\", { level: 1 }).textContent).toBe(\"{{app_name}}\");\n  });\n});\n"
+    },
+    {
+      "op": "write",
+      "path": "README.md",
+      "content": "# {{app_name}}\n\n{{tagline}}\n\nScaffolded by the **web-vite-app** Start on started.dev.\n\n## Harness\n\n- `package.json` declares React\n- `src/App.tsx` renders an `h1`\n- `src/App.test.ts` asserts the heading with `getByRole`\n\nAn agent does not get to say done until these pass.\n"
+    }
+  ]
+}
