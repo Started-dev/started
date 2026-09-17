@@ -1,0 +1,46 @@
+{
+  "id": "local-agent-worker",
+  "name": "local-agent-worker",
+  "version": "0.1.6",
+  "tagline": "A persistent worker with a human gate. Side effects require confirm().",
+  "description": "Drops a TypeScript worker that will not call a side-effecting tool without confirm().",
+  "category": "agent",
+  "license": "Apache-2.0",
+  "runtime": { "image": "started/runtime-node:20", "timeout_s": 120 },
+  "tools": { "allow": ["fs", "shell"], "deny": ["net.unrestricted", "wallet.sign"] },
+  "inputs": [
+    { "id": "worker_name", "label": "Worker name", "type": "string", "default": "custos" },
+    { "id": "job", "label": "Job", "type": "enum", "enum": ["watch-inbox", "sync-ledger", "heartbeat"], "default": "heartbeat" }
+  ],
+  "policy": ["confirm() required before any side effect", "No outbound network", "Memory is a local JSON file"],
+  "confirmRun": true,
+  "harness": [
+    { "id": "worker", "name": "worker.ts exists", "kind": "exists", "path": "src/worker.ts" },
+    { "id": "confirm", "name": "Human gate confirm() is defined", "kind": "contains", "path": "src/worker.ts", "pattern": "function confirm" },
+    { "id": "loop", "name": "Run loop exists", "kind": "contains", "path": "src/worker.ts", "pattern": "async function loop" },
+    { "id": "mem", "name": "Memory is persisted", "kind": "contains", "path": "src/worker.ts", "pattern": "memory.json" },
+    { "id": "policy", "name": "policy.yaml denies unsigned spend", "kind": "contains", "path": "policy.yaml", "pattern": "wallet.sign" }
+  ],
+  "initial": {
+    "policy.yaml": "allow:\n  - fs\n  - shell\ndeny:\n  - net.unrestricted\n",
+    "src/worker.ts": "// Incomplete worker.\nexport {};\n",
+    "README.md": "# worker\n\nIncomplete.\n"
+  },
+  "graph": [
+    {
+      "op": "write",
+      "path": "src/worker.ts",
+      "content": "import { readFileSync, writeFileSync, existsSync } from \"node:fs\";\nconst NAME = \"{{worker_name}}\";\nconst JOB = \"{{job}}\";\nconst MEMORY = \"memory.json\";\nfunction load() {\n  if (!existsSync(MEMORY)) return { ticks: 0 };\n  return JSON.parse(readFileSync(MEMORY, \"utf8\"));\n}\nfunction confirm(action) {\n  if (process.env.STARTED_CONFIRM === \"1\") return true;\n  console.warn(\"[gate] denied: \" + action);\n  return false;\n}\nfunction effect(label) {\n  if (!confirm(label)) return;\n  writeFileSync(MEMORY, JSON.stringify({ ticks: 1, job: JOB }));\n}\nasync function loop() {\n  console.log(NAME + \" online. job=\" + JOB);\n  effect(\"run:\" + JOB);\n}\nloop();\n"
+    },
+    {
+      "op": "write",
+      "path": "policy.yaml",
+      "content": "name: {{worker_name}}\njob: {{job}}\nallow:\n  - fs\n  - shell\ndeny:\n  - net.unrestricted\n  - wallet.sign\ngates:\n  - confirm() before any side effect\n"
+    },
+    {
+      "op": "write",
+      "path": "README.md",
+      "content": "# {{worker_name}}\n\nLocal worker for **{{job}}**. Side effects require `confirm()`.\n"
+    }
+  ]
+}
